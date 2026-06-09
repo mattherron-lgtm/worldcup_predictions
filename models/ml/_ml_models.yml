@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: bqml__group_stage_prediction_inputs
+    description: >
+      Feature table for BQML inference — one row per WC 2026 group stage fixture.
+      Structure mirrors int_ml__match_training_features for model compatibility.
+      Must be refreshed before running bqml__group_stage_predictions.
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+
+  - name: bqml__group_stage_predictions
+    description: >
+      BQML boosted tree classifier predictions for all 72 group stage matches.
+      Requires the BQML model to be trained first via:
+        bigquery_setup/04_train_bqml_model.sql
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+      - name: bqml_p_home_win
+        description: Model probability of home team winning
+      - name: bqml_p_draw
+        description: Model probability of draw
+      - name: bqml_p_away_win
+        description: Model probability of away team winning

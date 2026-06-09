@@ -1,0 +1,73 @@
+version: 2
+
+models:
+  - name: int_wc__group_fixtures
+    description: >
+      Auto-generated group stage fixtures for the 2026 World Cup.
+      All 72 matches (12 groups × 6 fixtures per group).
+      Derived from wc_2026_teams seed via self-join.
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+      - name: group_name
+        tests: [not_null]
+      - name: home_team
+        tests: [not_null]
+      - name: away_team
+        tests: [not_null]
+      - name: group_round
+        description: "1, 2, or 3 — which matchday this fixture falls on"
+        tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3]
+
+  - name: int_results__team_recent_form
+    description: >
+      Rolling form metrics per team based on last 10 matches (within 3-year window).
+      One row per team. Used as features in Poisson and BQML models.
+    columns:
+      - name: team
+        tests: [unique, not_null]
+      - name: form_pts_pct
+        description: Points percentage (0.0–1.0) from last 10 matches
+
+  - name: int_results__head_to_head
+    description: >
+      Head-to-head records between all WC 2026 team pairs over the last 10 years.
+      One row per (team, opponent) pair.
+    columns:
+      - name: team
+        tests: [not_null]
+      - name: opponent
+        tests: [not_null]
+      - name: h2h_win_rate
+        description: Win rate for 'team' against 'opponent'
+
+  - name: int_poisson__team_strengths
+    description: >
+      Attack and defense strength indices for the Poisson expected-goals model.
+      attack_index > 1.0 = above-average attack.
+      defense_index < 1.0 = below-average goals conceded (strong defense).
+    columns:
+      - name: team
+        tests: [not_null]
+      - name: attack_index
+        description: Team's goals scored / league average goals scored
+      - name: defense_index
+        description: Team's goals conceded / league average goals conceded
+
+  - name: int_ml__match_training_features
+    description: >
+      Feature-engineered training set for BQML model.
+      One row per historical match (2010–present). Uses point-in-time form
+      features to avoid data leakage during training.
+    columns:
+      - name: match_id
+        tests: [unique, not_null]
+      - name: result
+        description: "Label: home_win / draw / away_win"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["home_win", "draw", "away_win"]

@@ -1,0 +1,49 @@
+team_name,confederation,group_name,is_host,elo_rating,fifa_ranking
+Czech Republic,UEFA,Group A,FALSE,1740,39
+South Korea,AFC,Group A,FALSE,1758,25
+Mexico,CONCACAF,Group A,TRUE,1875,14
+South Africa,CAF,Group A,FALSE,1528,60
+Bosnia and Herzegovina,UEFA,Group B,FALSE,1595,64
+Canada,CONCACAF,Group B,TRUE,1788,30
+Qatar,AFC,Group B,FALSE,1421,57
+Switzerland,UEFA,Group B,FALSE,1891,19
+Brazil,CONMEBOL,Group C,FALSE,1991,6
+Haiti,CONCACAF,Group C,FALSE,1548,83
+Morocco,CAF,Group C,FALSE,1824,7
+Scotland,UEFA,Group C,FALSE,1782,42
+Australia,AFC,Group D,FALSE,1777,27
+Paraguay,CONMEBOL,Group D,FALSE,1833,40
+Turkey,UEFA,Group D,FALSE,1911,22
+United States,CONCACAF,Group D,TRUE,1726,17
+Ivory Coast,CAF,Group E,FALSE,1695,33
+Curaçao,CONCACAF,Group E,FALSE,1434,82
+Ecuador,CONMEBOL,Group E,FALSE,1935,24
+Germany,UEFA,Group E,FALSE,1932,10
+Japan,AFC,Group F,FALSE,1906,18
+Netherlands,UEFA,Group F,FALSE,1944,8
+Sweden,UEFA,Group F,FALSE,1712,38
+Tunisia,CAF,Group F,FALSE,1628,46
+Belgium,UEFA,Group G,FALSE,1893,9
+Egypt,CAF,Group G,FALSE,1696,29
+Iran,AFC,Group G,FALSE,1772,20
+New Zealand,OFC,Group G,FALSE,1562,85
+Cape Verde,CAF,Group H,FALSE,1578,67
+Saudi Arabia,AFC,Group H,FALSE,1569,61
+Spain,UEFA,Group H,FALSE,2155,2
+Uruguay,CONMEBOL,Group H,FALSE,1892,16
+France,UEFA,Group I,FALSE,2062,3
+Iraq,AFC,Group I,FALSE,1618,56
+Norway,UEFA,Group I,FALSE,1917,31
+Senegal,CAF,Group I,FALSE,1867,15
+Algeria,CAF,Group J,FALSE,1760,28
+Argentina,CONMEBOL,Group J,FALSE,2114,1
+Austria,UEFA,Group J,FALSE,1830,23
+Jordan,AFC,Group J,FALSE,1685,63
+Colombia,CONMEBOL,Group K,FALSE,1977,13
+DR Congo,CAF,Group K,FALSE,1661,45
+Portugal,UEFA,Group K,FALSE,1986,5
+Uzbekistan,AFC,Group K,FALSE,1718,50
+Croatia,UEFA,Group L,FALSE,1908,11
+England,UEFA,Group L,FALSE,2021,4
+Ghana,CAF,Group L,FALSE,1510,73
+Panama,CONCACAF,Group L,FALSE,1730,34

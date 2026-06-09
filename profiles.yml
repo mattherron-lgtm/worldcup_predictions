@@ -1,0 +1,26 @@
+# Place this file in ~/.dbt/ directory (or keep here for reference)
+# Shares the same GCP project as vv_commerce_analytics
+
+worldcup_predictions:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: analytics-project-production
+      dataset: ML_WC_2026
+      threads: 4
+      timeout_seconds: 600
+      location: europe-west2       # Matches ML_WC_2026 dataset location
+      priority: interactive
+      keyfile: /Users/mattherron/Documents/dbt_assets/analytics-project-production-62efc2ae9c13.json
+
+    prod:
+      type: bigquery
+      method: service-account
+      project: analytics-project-production
+      dataset: ML_WC_2026
+      threads: 8
+      timeout_seconds: 600
+      location: europe-west2
+      keyfile: /Users/mattherron/Documents/dbt_assets/analytics-project-production-62efc2ae9c13.json

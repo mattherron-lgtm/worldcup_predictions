@@ -1,0 +1,71 @@
+version: 2
+
+seeds:
+  - name: wc_2026_teams
+    description: >
+      2026 FIFA World Cup team list — 48 teams across 12 groups (A–L).
+      NOTE: Verify group assignments and ELO ratings against the official FIFA draw.
+      ELO ratings are approximate as of early 2026. Update from eloratings.net before running.
+    columns:
+      - name: team_name
+        description: Official FIFA team name
+        tests:
+          - unique
+          - not_null
+      - name: confederation
+        description: "Confederation: UEFA, CONMEBOL, CONCACAF, CAF, AFC, OFC"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["UEFA", "CONMEBOL", "CONCACAF", "CAF", "AFC", "OFC"]
+      - name: group_name
+        description: "Group assignment A–L"
+        tests:
+          - not_null
+      - name: is_host
+        description: Whether the team is a host nation (USA, Mexico, Canada)
+      - name: elo_rating
+        description: Team ELO rating — see eloratings.net for latest values
+        tests:
+          - not_null
+      - name: fifa_ranking
+        description: FIFA world ranking at time of draw
+
+  - name: fifa_world_cup_2026_schedule
+    description: Official FIFA 2026 match schedule — 104 matches including group stage, round of 32, and knockouts.
+    config:
+      column_types:
+        "Match Number":  integer
+        "Round Number":  string
+        "Date Time - UTC": string
+        "Local Time":    string
+        "Location":      string
+        "Home Team":     string
+        "Away Team":     string
+        "Group":         string
+        "Home Goals":    string
+        "Away Goals":    string
+        "Home Points":   string
+        "Away Points":   string
+
+  - name: wc_2026_squad_availability
+    description: >
+      Key player availability for each WC 2026 team. Update status before each
+      round of fixtures. status values: available, doubtful, injured, suspended.
+    config:
+      column_types:
+        effective_from: date
+    columns:
+      - name: team
+        tests:
+          - not_null
+      - name: player_name
+        tests:
+          - not_null
+      - name: status
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["available", "doubtful", "injured", "suspended"]

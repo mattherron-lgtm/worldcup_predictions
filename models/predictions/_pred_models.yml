@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: pred_group_stage_poisson
+    description: >
+      Poisson model predictions for all 72 group stage fixtures.
+      Computes expected goals (xG) per team, then derives W/D/L probabilities
+      from the score probability matrix (goals 0–5 per team).
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+      - name: home_xg
+        description: Expected goals for home team (from Poisson model)
+      - name: away_xg
+        description: Expected goals for away team (from Poisson model)
+      - name: poisson_p_home_win
+        description: Poisson probability of home team winning (0.0–1.0)
+      - name: poisson_p_draw
+        description: Poisson probability of draw
+      - name: poisson_p_away_win
+        description: Poisson probability of away team winning
+
+  - name: pred_group_stage_combined
+    description: >
+      Ensemble prediction: 40% Poisson + 60% BQML.
+      Falls back to Poisson-only if BQML model not yet trained.
+      One row per fixture with normalised probabilities and implied odds.
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+      - name: p_home_win
+        description: Final ensemble probability of home team winning
+      - name: p_draw
+        description: Final ensemble probability of draw
+      - name: p_away_win
+        description: Final ensemble probability of away team winning
+      - name: ensemble_predicted_result
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["home_win", "draw", "away_win"]
+
+  - name: pred_group_stage_standings
+    description: >
+      Monte Carlo simulated group standings with advancement probabilities.
+      Runs {{ var('n_simulations') }} simulations per fixture.
+      One row per team with finish position probabilities.
+    columns:
+      - name: team
+        tests: [not_null]
+      - name: p_advance
+        description: Probability of advancing to the Round of 32
+      - name: p_finish_1st
+        description: Probability of finishing 1st in the group
+
+  - name: pred_knockout_simulator
+    description: >
+      Round of 32 bracket with Elo-based match probabilities.
+      Seeds bracket from most likely group stage qualifiers.
+    columns:
+      - name: match_id
+        tests: [unique, not_null]
+
+  - name: pred_tournament_winner
+    description: >
+      Tournament winner probability for all 48 teams.
+      Uses Elo-based chain probability: P(win tournament) = P(advance) ×
+      P(win R32) × P(win R16) × P(win QF) × P(win SF) × P(win Final).
+      Normalised so all probabilities sum to 1.0.
+    columns:
+      - name: team
+        tests: [unique, not_null]
+      - name: p_win_tournament
+        description: Normalised probability of winning the 2026 World Cup
+      - name: implied_odds
+        description: 1 / p_win_tournament — compare to bookmaker outright odds

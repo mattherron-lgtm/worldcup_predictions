@@ -1,0 +1,82 @@
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ var('bq_project') }}"
+    schema: worldcup_raw_eu
+    description: "Raw historical data loaded into BigQuery"
+    tables:
+      - name: historical_match_results
+        description: >
+          International football results from 1872 to present.
+          Source: Kaggle — martj42/international-football-results-from-1872-to-2017.
+          Loaded via GCS external table (see bigquery_setup/02_create_historical_results_table.sql).
+        columns:
+          - name: date
+            description: Date of the match
+            tests:
+              - not_null
+          - name: home_team
+            description: Home team name (or first-listed team for neutral venue matches)
+            tests:
+              - not_null
+          - name: away_team
+            description: Away team name
+            tests:
+              - not_null
+          - name: home_score
+            description: Full-time goals scored by home team (STRING — some rows contain "NA")
+          - name: away_score
+            description: Full-time goals scored by away team (STRING — some rows contain "NA")
+          - name: tournament
+            description: Tournament name (FIFA World Cup, Friendly, etc.)
+          - name: city
+            description: Host city
+          - name: country
+            description: Host country
+          - name: neutral
+            description: True if match played at a neutral venue
+
+      - name: goalscorers
+        description: Individual goalscorer events for international matches.
+        columns:
+          - name: date
+            tests: [not_null]
+          - name: home_team
+            tests: [not_null]
+          - name: away_team
+            tests: [not_null]
+          - name: team
+            description: Team the scorer played for
+          - name: scorer
+            description: Player name
+          - name: minute
+            description: Minute of goal (STRING — can be "45+2" etc.)
+          - name: own_goal
+            description: True if own goal
+          - name: penalty
+            description: True if penalty
+
+      - name: shootouts
+        description: Penalty shootout results for matches that went to penalties.
+        columns:
+          - name: date
+            tests: [not_null]
+          - name: home_team
+            tests: [not_null]
+          - name: away_team
+            tests: [not_null]
+          - name: winner
+            description: Team that won the shootout
+          - name: first_shooter
+            description: Team that shot first
+
+      - name: former_names
+        description: Historical team name changes (e.g. Dahomey → Benin).
+        columns:
+          - name: current_name
+            description: Current team name
+          - name: former_name
+            description: Former team name
+          - name: start_date
+          - name: end_date

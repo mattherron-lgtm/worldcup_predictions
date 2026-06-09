@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: mart_wc_group_predictions
+    description: >
+      Master group stage predictions dashboard table.
+      One row per fixture (72 total) with ensemble probabilities,
+      expected goals, implied odds, form context, and confidence rating.
+      Ready for direct use in Looker Studio or Tableau.
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+      - name: prediction_confidence
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["High", "Medium", "Low"]
+
+  - name: mart_wc_bracket
+    description: >
+      Full tournament bracket — one row per team with probabilities of
+      reaching each knockout round and winning the tournament.
+      Primary table for tournament winner analysis.
+    columns:
+      - name: team
+        tests: [unique, not_null]
+      - name: p_win_tournament
+        description: Normalised probability of winning the 2026 World Cup
+
+  - name: mart_wc_match_narratives
+    description: >
+      Group stage match predictions enriched with Gemini AI narratives.
+      Requires the Gemini connection to be set up first.
+      If Gemini is not configured, gemini_narrative will be null
+      but all prediction columns will still populate.
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+      - name: gemini_narrative
+        description: >
+          AI-generated 150-word match preview including form context,
+          predicted scoreline, tactical insight, and upset potential.

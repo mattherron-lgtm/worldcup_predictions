@@ -1,0 +1,70 @@
+## =============================================================
+## World Cup 2026 Predictions — dbt Project Configuration
+## =============================================================
+## Pipeline overview:
+##   1. Staging        — clean raw historical match results
+##   2. Intermediate   — feature engineering (form, H2H, Poisson strength)
+##   3. ML             — BQML feature tables for model training/inference
+##   4. Predictions    — Poisson + BQML ensemble, Monte Carlo simulation
+##   5. Marts          — dashboards, brackets, Gemini AI narratives
+## =============================================================
+
+name: worldcup_predictions
+version: '1.0.0'
+config-version: 2
+
+profile: worldcup_predictions
+
+model-paths: ["models"]
+seed-paths:  ["seeds"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # BigQuery project — update to your GCP project ID
+  bq_project: "analytics-project-production"
+  # ML model dataset (created by bigquery_setup/03_train_bqml_model.sql)
+  bq_ml_dataset: "worldcup_ml_eu"
+  # Set to true once the Gemini BQML model has been created.
+  # Run bigquery_setup/03_create_gemini_connection.sql first, then flip to true.
+  gemini_enabled: false
+  # Number of Monte Carlo simulations for knockout bracket
+  n_simulations: 200
+  # Lookback window for team form (in months)
+  form_lookback_months: 36
+
+models:
+  worldcup_predictions:
+
+    staging:
+      +materialized: view
+      +schema: wc_staging
+
+    intermediate:
+      +materialized: view
+      +schema: wc_intermediate
+      int_ml__match_training_features:
+        +materialized: table
+
+    ml:
+      +materialized: view
+      +schema: wc_ml
+
+    predictions:
+      +materialized: table
+      +schema: wc_predictions
+
+    marts:
+      +materialized: table
+      +schema: wc_marts
+
+seeds:
+  worldcup_predictions:
+    +schema: wc_seeds
+    wc_2026_teams:
+      +column_types:
+        elo_rating: FLOAT64
+        fifa_ranking: INT64

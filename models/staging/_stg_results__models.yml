@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: stg_results__international_matches
+    description: >
+      Cleaned and enriched historical international football results (1872–present).
+      One row per match. Source: Kaggle international-football-results dataset.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [match_date, home_team, away_team]
+    columns:
+      - name: match_id
+        description: Surrogate key from match_date + home_team + away_team
+        tests:
+          - unique
+          - not_null
+      - name: match_date
+        tests: [not_null]
+      - name: home_team
+        tests: [not_null]
+      - name: away_team
+        tests: [not_null]
+      - name: home_goals
+        tests: [not_null]
+      - name: away_goals
+        tests: [not_null]
+      - name: result
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["home_win", "draw", "away_win"]
+      - name: tournament_weight
+        description: Numerical weight (0.5–3.0) for training — World Cup matches count most
+      - name: recency_tier
+        description: "recent (<2yr) / mid (2-5yr) / historic (>5yr)"
