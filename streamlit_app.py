@@ -27,7 +27,7 @@ BQ_DATASET  = "ML_WC_2026"
 GEMINI_MODEL = "gemini-2.0-flash-lite"
 # Get a free Gemini API key at: https://aistudio.google.com/app/apikey
 # Then: export GEMINI_API_KEY="your_key" (or add to ~/.zshrc)
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "") or st.secrets.get("GEMINI_API_KEY", "")
 LOCAL_KEY   = os.path.expanduser(
     "~/Documents/dbt_assets/analytics-project-production-62efc2ae9c13.json"
 )
