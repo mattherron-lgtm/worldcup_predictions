@@ -6,6 +6,7 @@
 
 select
     -- Fixture info
+    f.match_number,
     c.fixture_id,
     c.group_name,
     c.group_round,
@@ -78,4 +79,4 @@ left join {{ ref('wc_2026_teams') }} ht  on c.home_team = ht.team_name
 left join {{ ref('wc_2026_teams') }} at_ on c.away_team = at_.team_name
 left join {{ ref('int_wc__group_fixtures') }} f on f.fixture_id = c.fixture_id
 left join {{ ref('wc_2026_venues') }} v on v.venue = f.venue
-order by c.group_name, c.group_round
+order by f.match_number
