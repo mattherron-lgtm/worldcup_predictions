@@ -43,19 +43,18 @@ st.set_page_config(
 
 @st.cache_resource
 def get_bq_client():
-    # 1. Streamlit Cloud: secret stored as JSON string
-    try:
-        if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in st.secrets:
-            info = json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
-            creds = service_account.Credentials.from_service_account_info(info)
-            return bigquery.Client(project=BQ_PROJECT, credentials=creds)
-    except Exception:
-        pass
+    # 1. Streamlit Cloud: secret stored as TOML table [gcp_service_account]
+    if "gcp_service_account" in st.secrets:
+        creds = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"]
+        )
+        return bigquery.Client(project=BQ_PROJECT, credentials=creds)
     # 2. Local dev: use the known keyfile path
     if os.path.exists(LOCAL_KEY):
         return bigquery.Client.from_service_account_json(LOCAL_KEY, project=BQ_PROJECT)
-    # 3. GCP environment: ADC
-    return bigquery.Client(project=BQ_PROJECT)
+    available = list(st.secrets.keys()) if hasattr(st, "secrets") else []
+    st.error(f"No credentials found. Secrets available: {available}")
+    st.stop()
 
 
 def tbl(name):
