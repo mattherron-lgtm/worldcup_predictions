@@ -38,7 +38,7 @@ seeds:
       column_types:
         "Match Number":  integer
         "Round Number":  string
-        "Date Time - UTC": string
+        "Date Time - BST": string
         "Local Time":    string
         "Location":      string
         "Home Team":     string

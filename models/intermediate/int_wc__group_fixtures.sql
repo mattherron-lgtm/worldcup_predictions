@@ -63,18 +63,19 @@ fixtures as (
 
         true                            as is_neutral_venue,
 
-        -- UTC kickoff parsed from DD/MM/YYYY HH:MM format
-        parse_datetime('%d/%m/%Y %H:%M', s.kickoff_utc_raw)  as kickoff_utc,
+        -- BST kickoff parsed from DD/MM/YYYY HH:MM format
+        parse_datetime('%d/%m/%Y %H:%M', s.kickoff_bst_raw)  as kickoff_utc,
 
-        -- Local kickoff parsed from "YYYY-MM-DD HH:MM (UTC±H)" format
-        parse_datetime(
-            '%Y-%m-%d %H:%M',
-            regexp_extract(s.kickoff_local_raw, r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})')
-        )                               as kickoff_local,
+        -- Local kickoff parsed from DD/MM/YYYY HH:MM format
+        parse_datetime('%d/%m/%Y %H:%M', s.kickoff_local_raw) as kickoff_local,
 
-        -- UTC offset hours extracted from e.g. "(UTC-6)"
+        -- UTC offset hours: calculate as difference between BST and local time
         cast(
-            regexp_extract(s.kickoff_local_raw, r'UTC([+-]\d+)\)')
+            timestamp_diff(
+                parse_datetime('%d/%m/%Y %H:%M', s.kickoff_bst_raw),
+                parse_datetime('%d/%m/%Y %H:%M', s.kickoff_local_raw),
+                hour
+            )
         as int64)                        as utc_offset_hours,
 
         s.venue,
