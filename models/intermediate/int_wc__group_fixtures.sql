@@ -8,7 +8,7 @@ with schedule as (
     select
         `Match Number`    as match_number,
         `Round Number`    as group_round,
-        `Date Time - UTC` as kickoff_utc_raw,
+        `Date Time - BST` as kickoff_bst_raw,
         `Local Time`      as kickoff_local_raw,
         `Location`        as venue,
         `Home Team`       as home_team,
