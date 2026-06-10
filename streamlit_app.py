@@ -186,6 +186,8 @@ def page_group_stage(client):
             altitude = int(row['altitude_m']) if row['altitude_m'] is not None else '—'
             temp = int(row['avg_temp_june_c']) if row['avg_temp_june_c'] is not None else '—'
             st.caption(f"{altitude}m altitude  ·  ~{temp}°C avg")
+            st.write("")
+            st.write("")  # Extra padding to align all charts at Bosnia & Herzegovina level
 
         with col_chart:
             # Horizontal bar: home at top, draw in middle, away at bottom
