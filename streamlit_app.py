@@ -163,14 +163,14 @@ def page_group_stage(client):
     conf_icon = {"High": "🟢", "Medium": "🟡", "Low": "🔴"}
 
     for i, (_, row) in enumerate(df.iterrows()):
-        col_info, col_chart, col_meta = st.columns([2, 4, 2])
+        col_info, col_chart, col_meta = st.columns([3, 4, 2])
 
         with col_info:
             st.markdown(f"**{row['group_name']} · Matchday {row['group_round']}**")
-            # Venue directly under group/matchday, no icon
-            st.markdown(f"{row['venue']}, {row['venue_city']}")
+            # Venue: small caption text
+            st.caption(f"{row['venue']}, {row['venue_city']}")
             st.markdown(f"### {row['home_team']}  vs  {row['away_team']}")
-            # Kickoff: local on one line, UTC on next, no icons
+            # Kickoff: UTC first (white/bright), then local (dimmer caption)
             import pandas as pd
             def fmt_dt(val, fmt="%a %d %b '%y %H:%M"):
                 if val is None or (isinstance(val, float) and pd.isna(val)):
@@ -182,8 +182,8 @@ def page_group_stage(client):
             kickoff_local_str = fmt_dt(row['kickoff_local'])
             kickoff_utc_str   = fmt_dt(row['kickoff_utc'])
             utc_label = f"UTC{int(row['utc_offset_hours']):+d}" if row['utc_offset_hours'] is not None else ''
+            st.markdown(f"<span style='color:white;font-size:0.8rem'>{kickoff_utc_str} UTC</span>", unsafe_allow_html=True)
             st.caption(f"{kickoff_local_str} local ({utc_label})")
-            st.caption(f"{kickoff_utc_str} UTC")
             altitude = int(row['altitude_m']) if row['altitude_m'] is not None else '—'
             temp = int(row['avg_temp_june_c']) if row['avg_temp_june_c'] is not None else '—'
             st.caption(f"{altitude}m altitude  ·  ~{temp}°C avg")
@@ -212,7 +212,7 @@ def page_group_stage(client):
         with col_meta:
             xg_str = f"{row['home_xg']:.2f} – {row['away_xg']:.2f}"
             st.metric("xG", xg_str)
-            st.metric("ELO", f"{int(row['home_elo'])} – {int(row['away_elo'])}")
+            st.markdown(f"<span style='color:white;font-size:0.8rem'>ELO &nbsp; {int(row['home_elo'])} – {int(row['away_elo'])}</span>", unsafe_allow_html=True)
             st.caption(row['elo_edge_label'])
             predicted = row["ensemble_predicted_result"].replace("_", " ").title()
             icon = conf_icon.get(row["prediction_confidence"], "⚪")
