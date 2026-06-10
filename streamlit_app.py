@@ -79,7 +79,7 @@ def run_query(_client, sql):
 def load_fixtures(_client):
     return run_query(_client, f"""
         SELECT
-            fixture_id, group_name, group_round,
+            fixture_id, group_name, group_round, match_number,
             home_team, away_team,
             p_home_win, p_draw, p_away_win,
             ensemble_predicted_result,
@@ -94,7 +94,7 @@ def load_fixtures(_client):
             kickoff_utc, kickoff_local, utc_offset_hours,
             altitude_m, avg_temp_june_c
         FROM {tbl('mart_wc_group_predictions')}
-        ORDER BY group_name, group_round
+        ORDER BY match_number
     """)
 
 
@@ -181,9 +181,8 @@ def page_group_stage(client):
                     return str(val)[:16].replace('T', ' ')
             kickoff_local_str = fmt_dt(row['kickoff_local'])
             kickoff_utc_str   = fmt_dt(row['kickoff_utc'])
-            utc_label = f"UTC{int(row['utc_offset_hours']):+d}" if row['utc_offset_hours'] is not None else ''
-            st.markdown(f"<span style='color:white;font-size:0.8rem'>{kickoff_utc_str} UTC</span>", unsafe_allow_html=True)
-            st.caption(f"{kickoff_local_str} local ({utc_label})")
+            st.markdown(f"<span style='color:white;font-size:0.8rem'>{kickoff_utc_str} (UK Time)</span>", unsafe_allow_html=True)
+            st.caption(f"{kickoff_local_str} (Local Time)")
             altitude = int(row['altitude_m']) if row['altitude_m'] is not None else '—'
             temp = int(row['avg_temp_june_c']) if row['avg_temp_june_c'] is not None else '—'
             st.caption(f"{altitude}m altitude  ·  ~{temp}°C avg")
