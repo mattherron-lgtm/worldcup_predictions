@@ -24,7 +24,7 @@ from google.oauth2 import service_account
 
 BQ_PROJECT  = "analytics-project-production"
 BQ_DATASET  = "ML_WC_2026"
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-2.5-flash-lite-preview-06-17"
 # Get a free Gemini API key at: https://aistudio.google.com/app/apikey
 # Then: export GEMINI_API_KEY="your_key" (or add to ~/.zshrc)
 def _get_gemini_key():
