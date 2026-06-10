@@ -29,3 +29,4 @@ dbt_packages/
 # IDE
 .vscode/
 .idea/
+dbt_internal_packages/
