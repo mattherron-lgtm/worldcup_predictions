@@ -167,11 +167,10 @@ def page_group_stage(client):
 
         with col_info:
             st.markdown(f"**{row['group_name']} · Matchday {row['group_round']}**")
+            # Venue directly under group/matchday, no icon
+            st.markdown(f"{row['venue']}, {row['venue_city']}")
             st.markdown(f"### {row['home_team']}  vs  {row['away_team']}")
-            st.caption(
-                f"ELO {int(row['home_elo'])} vs {int(row['away_elo'])}  ·  {row['elo_edge_label']}"
-            )
-            # Venue & kickoff
+            # Kickoff: local on one line, UTC on next, no icons
             import pandas as pd
             def fmt_dt(val, fmt="%a %d %b '%y %H:%M"):
                 if val is None or (isinstance(val, float) and pd.isna(val)):
@@ -183,25 +182,27 @@ def page_group_stage(client):
             kickoff_local_str = fmt_dt(row['kickoff_local'])
             kickoff_utc_str   = fmt_dt(row['kickoff_utc'])
             utc_label = f"UTC{int(row['utc_offset_hours']):+d}" if row['utc_offset_hours'] is not None else ''
-            st.caption(f"📍 {row['venue']}, {row['venue_city']}")
-            st.caption(f"🕐 {kickoff_local_str} local ({utc_label})  ·  {kickoff_utc_str} UTC")
+            st.caption(f"{kickoff_local_str} local ({utc_label})")
+            st.caption(f"{kickoff_utc_str} UTC")
             altitude = int(row['altitude_m']) if row['altitude_m'] is not None else '—'
             temp = int(row['avg_temp_june_c']) if row['avg_temp_june_c'] is not None else '—'
-            st.caption(f"⛰ {altitude}m altitude  ·  🌡 ~{temp}°C avg")
+            st.caption(f"{altitude}m altitude  ·  ~{temp}°C avg")
 
         with col_chart:
+            # Horizontal bar: home at top, draw in middle, away at bottom
             fig = go.Figure(go.Bar(
-                x=[row["home_team"], "Draw", row["away_team"]],
-                y=[row["p_home_win"], row["p_draw"], row["p_away_win"]],
+                y=[row["home_team"], "Draw", row["away_team"]],
+                x=[row["p_home_win"], row["p_draw"], row["p_away_win"]],
+                orientation="h",
                 marker_color=["#2ecc71", "#7f7f7f", "#e74c3c"],
                 text=[f"{v:.0%}" for v in [row["p_home_win"], row["p_draw"], row["p_away_win"]]],
                 textposition="outside",
             ))
             fig.update_layout(
-                height=260,
-                margin=dict(l=110, r=110, t=8, b=8),
-                xaxis=dict(showgrid=False),
-                yaxis=dict(range=[0, 1.15], showticklabels=False, showgrid=False),
+                height=200,
+                margin=dict(l=10, r=60, t=8, b=8),
+                xaxis=dict(range=[0, 1.15], showticklabels=False, showgrid=False),
+                yaxis=dict(showgrid=False, autorange="reversed"),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 showlegend=False,
@@ -211,6 +212,8 @@ def page_group_stage(client):
         with col_meta:
             xg_str = f"{row['home_xg']:.2f} – {row['away_xg']:.2f}"
             st.metric("xG", xg_str)
+            st.metric("ELO", f"{int(row['home_elo'])} – {int(row['away_elo'])}")
+            st.caption(row['elo_edge_label'])
             predicted = row["ensemble_predicted_result"].replace("_", " ").title()
             icon = conf_icon.get(row["prediction_confidence"], "⚪")
             st.caption(f"**{predicted}** {icon}")
