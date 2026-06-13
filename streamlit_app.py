@@ -124,6 +124,37 @@ def load_group_standings(_client):
     """)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_predictions_vs_actual(_client):
+    return run_query(_client, f"""
+        SELECT
+            group_name, team,
+            pred_pts, pred_gd, pred_gf,
+            actual_pts, actual_gd, actual_gf,
+            actual_position, qualified_direct,
+            pts_diff, gd_diff, gf_diff,
+            p_finish_1st, p_finish_2nd, p_finish_3rd,
+            position_accuracy
+        FROM {tbl('mart_predictions_vs_actual')}
+        ORDER BY group_name, coalesce(actual_position, 999), team
+    """)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_match_predictions_vs_actual(_client):
+    return run_query(_client, f"""
+        SELECT
+            match_number, group_name, group_round,
+            home_team, away_team,
+            p_home_win, p_draw, p_away_win, ensemble_predicted_result,
+            home_goals, away_goals, actual_result,
+            prediction_accurate, actual_outcome_probability,
+            home_xg, away_xg, home_xg_diff, away_xg_diff
+        FROM {tbl('mart_match_predictions_vs_actual')}
+        ORDER BY match_number
+    """)
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def render_sidebar():
@@ -136,6 +167,7 @@ def render_sidebar():
             [
                 "🗓️  Group Stage",
                 "📊  Group Standings",
+                "📈  Model Performance",
                 "🏆  Tournament Winner",
                 "🤖  Match Previews",
                 "💬  Chat Agent",
@@ -406,6 +438,102 @@ def page_tournament_winner(client):
         )
 
 
+# ── Page: Model Performance ───────────────────────────────────────────────────
+
+def page_model_performance(client):
+    st.header("📈 Model Performance")
+    st.caption("Track predicted vs actual outcomes as the tournament progresses.")
+
+    with st.spinner("Loading comparison data…"):
+        comp_df = load_predictions_vs_actual(client)
+        match_comp_df = load_match_predictions_vs_actual(client)
+
+    # ─── Tab 1: Group Standings Comparison ───
+    st.subheader("Predicted vs Actual Group Standings")
+    
+    groups = sorted(comp_df["group_name"].unique())
+    
+    for group in groups:
+        group_comp = comp_df[comp_df["group_name"] == group].copy()
+        
+        if group_comp[group_comp["actual_position"].notna()].shape[0] == 0:
+            continue  # Skip if no actual results yet
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"**{group} - Predicted**")
+            pred_display = group_comp[[
+                "team", "pred_pts", "pred_gf", "pred_ga", "pred_gd", "p_finish_1st"
+            ]].copy()
+            pred_display.columns = ["Team", "Pts", "GF", "GA", "GD", "1st %"]
+            pred_display["1st %"] = (pred_display["1st %"] * 100).round(1).astype(str) + "%"
+            for col in ["Pts", "GF", "GA", "GD"]:
+                pred_display[col] = pred_display[col].round(1)
+            st.dataframe(pred_display, use_container_width=True, hide_index=True)
+        
+        with col2:
+            st.markdown(f"**{group} - Actual**")
+            actual_display = group_comp[[
+                "team", "actual_pts", "actual_gf", "actual_ga", "actual_gd", "actual_position"
+            ]].copy()
+            actual_display.columns = ["Team", "Pts", "GF", "GA", "GD", "Pos"]
+            for col in ["Pts", "GF", "GA", "GD"]:
+                actual_display[col] = actual_display[col].round(1)
+            actual_display = actual_display.dropna(subset=["Pos"])
+            if len(actual_display) > 0:
+                st.dataframe(actual_display, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No match results yet")
+        st.write("")
+
+    # ─── Tab 2: Match Accuracy ───
+    st.divider()
+    st.subheader("Match Prediction Accuracy")
+    
+    # Filter to completed matches only
+    completed = match_comp_df[match_comp_df["prediction_accurate"].notna()].copy()
+    
+    if len(completed) > 0:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_matches = len(completed)
+        correct = len(completed[completed["prediction_accurate"] == "correct"])
+        accuracy_pct = (correct / total_matches * 100) if total_matches > 0 else 0
+        
+        with col1:
+            st.metric("Matches Played", total_matches)
+        with col2:
+            st.metric("Predictions Correct", f"{correct}/{total_matches}")
+        with col3:
+            st.metric("Accuracy", f"{accuracy_pct:.1f}%")
+        with col4:
+            avg_confidence = completed["actual_outcome_probability"].mean()
+            st.metric("Avg Confidence", f"{avg_confidence:.1%}")
+
+        st.divider()
+        
+        # Recent matches
+        st.markdown("**Recent Matches**")
+        recent = completed.tail(10).copy()
+        recent_display = recent[[
+            "match_number", "group_name", "home_team", "away_team",
+            "ensemble_predicted_result", "actual_result",
+            "prediction_accurate", "actual_outcome_probability"
+        ]].copy()
+        recent_display.columns = [
+            "Match", "Group", "Home", "Away",
+            "Predicted", "Actual", "Accurate", "Confidence"
+        ]
+        recent_display["Predicted"] = recent_display["Predicted"].str.replace("_", " ").str.title()
+        recent_display["Actual"] = recent_display["Actual"].str.replace("_", " ").str.title()
+        recent_display["Confidence"] = (recent_display["Confidence"] * 100).round(1).astype(str) + "%"
+        
+        st.dataframe(recent_display, use_container_width=True, hide_index=True)
+    else:
+        st.info("No match results yet. Check back once matches are played!")
+
+
 # ── Gemini helper (shared by Previews + Chat) ───────────────────────────────
 
 @st.cache_resource
@@ -666,6 +794,7 @@ def main():
     page_map = {
         "🗓️  Group Stage":      page_group_stage,
         "📊  Group Standings":   page_standings,
+        "📈  Model Performance": page_model_performance,
         "🏆  Tournament Winner": page_tournament_winner,
         "🤖  Match Previews":    page_match_previews,
         "💬  Chat Agent":        page_chat,
