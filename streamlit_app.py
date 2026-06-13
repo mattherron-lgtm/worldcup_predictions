@@ -111,6 +111,19 @@ def load_bracket(_client):
     """)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_group_standings(_client):
+    return run_query(_client, f"""
+        SELECT
+            group_name, team,
+            avg_pts, avg_goal_diff, avg_goals_scored, avg_goals_conceded,
+            p_finish_1st, p_finish_2nd, p_finish_3rd, p_finish_4th,
+            p_advance
+        FROM {tbl('pred_group_stage_standings')}
+        ORDER BY group_name, avg_pts DESC, avg_goal_diff DESC
+    """)
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def render_sidebar():
@@ -231,11 +244,70 @@ def page_group_stage(client):
 # ── Page: Group Standings ─────────────────────────────────────────────────────
 
 def page_standings(client):
-    st.header("Group Stage Standings Probability")
-    st.caption("Based on Monte Carlo simulation across all fixtures.")
-    st.caption("🟦 Finish 2nd · 🟩 Finish 1st (stacked — total bar = chance of qualifying directly) · 🟧 Qualify as best 3rd-placed team (hidden by default, click legend to show)")
+    st.header("Group Stage Standings")
 
     with st.spinner("Loading standings…"):
+        standings_df = load_group_standings(client)
+
+    # Display group tables
+    st.subheader("Predicted Group Tables")
+    st.caption("Based on average outcomes from Monte Carlo simulation across 1,000 scenarios.")
+
+    groups = sorted(standings_df["group_name"].unique())
+    
+    for group in groups:
+        group_data = standings_df[standings_df["group_name"] == group].copy()
+        group_data = group_data.reset_index(drop=True)
+        
+        # Format columns for display
+        display_data = group_data[[
+            "team", "avg_pts", "avg_goals_scored", "avg_goals_conceded",
+            "avg_goal_diff", "p_finish_1st", "p_finish_2nd", "p_finish_3rd", "p_advance"
+        ]].copy()
+        
+        display_data.columns = [
+            "Team", "Pts", "GF", "GA", "GD", 
+            "1st %", "2nd %", "3rd %", "Qualify %"
+        ]
+        
+        # Format percentages
+        for col in ["1st %", "2nd %", "3rd %", "Qualify %"]:
+            display_data[col] = (display_data[col] * 100).round(1).astype(str) + "%"
+        
+        # Format numbers
+        display_data["Pts"] = display_data["Pts"].round(1)
+        display_data["GF"] = display_data["GF"].round(1)
+        display_data["GA"] = display_data["GA"].round(1)
+        display_data["GD"] = display_data["GD"].round(1)
+        
+        # Display table in columns (2 per row)
+        col1, col2 = st.columns([1.2, 3])
+        with col1:
+            st.markdown(f"**Group {group}**")
+        with col2:
+            st.dataframe(
+                display_data,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Team": st.column_config.TextColumn(width="medium"),
+                    "Pts": st.column_config.NumberColumn(width="small"),
+                    "GF": st.column_config.NumberColumn(width="small"),
+                    "GA": st.column_config.NumberColumn(width="small"),
+                    "GD": st.column_config.NumberColumn(width="small"),
+                    "1st %": st.column_config.TextColumn(width="small"),
+                    "2nd %": st.column_config.TextColumn(width="small"),
+                    "3rd %": st.column_config.TextColumn(width="small"),
+                    "Qualify %": st.column_config.TextColumn(width="small"),
+                }
+            )
+        st.write("")  # Spacing
+
+    st.divider()
+    st.subheader("Qualification Probability Charts")
+    st.caption("🟦 Finish 2nd · 🟩 Finish 1st (stacked — total bar = chance of qualifying directly) · 🟧 Qualify as best 3rd-placed team (hidden by default, click legend to show)")
+
+    with st.spinner("Loading bracket…"):
         bracket = load_bracket(client)
 
     groups = sorted(bracket["group_name"].unique())
