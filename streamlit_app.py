@@ -580,7 +580,7 @@ def page_model_performance(client):
         
         # Set Actual to "Pending" if match hasn't been played (Actual Score is "TBD")
         all_matches_display["Actual"] = all_matches_display.apply(
-            lambda row: "Pending" if row["Actual_Status"] == "TBD" else row["Actual"].replace("_", " ").str.title(),
+            lambda row: "Pending" if row["Actual_Status"] == "TBD" else row["Actual"].replace("_", " ").title(),
             axis=1
         )
         
