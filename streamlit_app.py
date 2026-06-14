@@ -544,14 +544,16 @@ def page_model_performance(client):
         # Format actual total goals
         all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
         
-        # Create score strings
+        # Create score strings (handle NaN for future matches)
         all_matches["pred_score"] = (
             all_matches["pred_goals_total"].round(0).astype(int).astype(str) + 
             " (avg)"
         )
-        all_matches["actual_score"] = (
-            all_matches["home_goals"].astype(int).astype(str) + "-" +
-            all_matches["away_goals"].astype(int).astype(str)
+        all_matches["actual_score"] = all_matches.apply(
+            lambda row: f"{int(row['home_goals'])}-{int(row['away_goals'])}" 
+                        if pd.notna(row['home_goals']) and pd.notna(row['away_goals']) 
+                        else "TBD",
+            axis=1
         )
         
         # Create display table with all columns
