@@ -593,23 +593,19 @@ def page_model_performance(client):
         # Drop the temporary Actual_Status column
         all_matches_display = all_matches_display.drop(columns=["Actual_Status"])
         
-        # Add color coding using Streamlit's built-in styling
-        def color_result_correct(val):
-            """Apply color to Result Correct column"""
-            if val == "correct":
-                color = "#90EE90"  # Light green
-            elif val == "incorrect":
-                color = "#FF6B6B"  # Light red
-            else:
-                color = "#FFE5B4"  # Peach (pending)
-            return f"background-color: {color}"
+        # Display the table
+        st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
         
-        # Apply styling using pandas Styler
-        styled_df = all_matches_display.style.map(
-            color_result_correct, 
-            subset=["Result Correct"]
-        )
-        st.dataframe(styled_df, use_container_width=True, hide_index=True, height=600)
+        # Add color coding note
+        st.markdown("""
+        <div style="margin-top: 20px; font-size: 14px;">
+        <p><strong>Result Correct:</strong> 
+        <span style="background-color: #90EE90; padding: 2px 8px; border-radius: 3px;">● Correct</span>
+        <span style="background-color: #FF6B6B; color: white; padding: 2px 8px; border-radius: 3px; margin-left: 10px;">● Incorrect</span>
+        <span style="background-color: #FFE5B4; padding: 2px 8px; border-radius: 3px; margin-left: 10px;">● Pending</span>
+        </p>
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.info("No match results yet. Check back once matches are played!")
 
