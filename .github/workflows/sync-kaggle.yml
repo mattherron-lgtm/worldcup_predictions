@@ -1,0 +1,39 @@
+name: Sync Kaggle Historical Results
+
+on:
+  schedule:
+    - cron: '0 0 * * SUN'  # Weekly on Sunday at midnight UTC
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install kagglehub google-cloud-bigquery pandas
+      
+      - name: Sync Kaggle data to BigQuery
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: python scripts/sync_kaggle_historical_results.py
+      
+      - name: Notify on success
+        if: success()
+        run: echo "✅ Historical results synced successfully"
+      
+      - name: Notify on failure
+        if: failure()
+        run: echo "❌ Sync failed - check logs above"
