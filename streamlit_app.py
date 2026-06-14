@@ -155,6 +155,20 @@ def load_match_predictions_vs_actual(_client):
     """)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_goalscorers(_client, fixture_id):
+    """Load goalscorers for a specific match fixture."""
+    return run_query(_client, f"""
+        SELECT
+            fixture_id, home_team, away_team,
+            home_scorers, away_scorers,
+            total_goals, home_goals_count, away_goals_count
+        FROM {tbl('mart_wc_match_goalscorers')}
+        WHERE fixture_id = '{fixture_id}'
+        LIMIT 1
+    """)
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def render_sidebar():
@@ -621,6 +635,29 @@ def page_match_previews(client):
     c3.metric("xG", f"{row['home_xg']:.2f} – {row['away_xg']:.2f}")
     c4.metric("Confidence", row["prediction_confidence"])
     st.divider()
+
+    # Show goalscorers if match has been played
+    with st.spinner("Loading match details…"):
+        try:
+            goalscorers_df = load_goalscorers(client, row['fixture_id'])
+            if goalscorers_df is not None and len(goalscorers_df) > 0:
+                gs = goalscorers_df.iloc[0]
+                if gs['total_goals'] and gs['total_goals'] > 0:
+                    st.subheader("⚽ Goalscorers")
+                    gs_cols = st.columns(2)
+                    with gs_cols[0]:
+                        st.write(f"**{gs['home_team']}** ({gs['home_goals_count']})")
+                        if gs['home_scorers']:
+                            for scorer in str(gs['home_scorers']).split(', '):
+                                st.caption(f"• {scorer}")
+                    with gs_cols[1]:
+                        st.write(f"**{gs['away_team']}** ({gs['away_goals_count']})")
+                        if gs['away_scorers']:
+                            for scorer in str(gs['away_scorers']).split(', '):
+                                st.caption(f"• {scorer}")
+        except Exception as e:
+            # Silently fail if goalscorer data not available (not yet played)
+            pass
 
     cache_key = f"preview_{row['fixture_id']}"
 

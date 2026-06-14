@@ -40,3 +40,24 @@ models:
         description: >
           AI-generated 150-word match preview including form context,
           predicted scoreline, tactical insight, and upset potential.
+
+  - name: mart_wc_match_goalscorers
+    description: >
+      Goalscorer events for 2026 FIFA World Cup group stage matches.
+      Aggregates all goals per match with scorer names, counts by team.
+      Empty until 2026 matches are played and Kaggle dataset updates.
+      Used in Match Previews page to display goal timeline.
+    columns:
+      - name: fixture_id
+        tests: [unique, not_null]
+      - name: home_scorers
+        description: Comma-separated list of home team goalscorers
+      - name: away_scorers
+        description: Comma-separated list of away team goalscorers
+      - name: total_goals
+        description: Total number of goals in match
+      - name: home_goals_count
+        description: Goals scored by home team
+      - name: away_goals_count
+        description: Goals scored by away team
+
