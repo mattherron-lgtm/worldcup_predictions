@@ -149,7 +149,10 @@ def load_match_predictions_vs_actual(_client):
             p_home_win, p_draw, p_away_win, ensemble_predicted_result,
             home_goals, away_goals, actual_result,
             prediction_accurate, actual_outcome_probability,
-            home_xg, away_xg, home_xg_diff, away_xg_diff
+            home_xg, away_xg, home_xg_diff, away_xg_diff,
+            actual_goals_1h, actual_goals_2h,
+            actual_home_goals_1h, actual_home_goals_2h,
+            actual_away_goals_1h, actual_away_goals_2h
         FROM {tbl('mart_match_predictions_vs_actual')}
         ORDER BY match_number
     """)
@@ -532,18 +535,42 @@ def page_model_performance(client):
         
         # Sort by match number ascending (earliest first)
         all_matches = completed.sort_values("match_number", ascending=True).copy()
+        
+        # Add predicted goals by half (using 45/55 split: 45% 1H, 55% 2H)
+        all_matches["pred_goals_total"] = all_matches["home_xg"] + all_matches["away_xg"]
+        all_matches["pred_goals_1h"] = (all_matches["pred_goals_total"] * 0.45).round(1)
+        all_matches["pred_goals_2h"] = (all_matches["pred_goals_total"] * 0.55).round(1)
+        
+        # Format actual total goals
+        all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
+        
+        # Create display table with all columns
         all_matches_display = all_matches[[
             "match_number", "group_name", "home_team", "away_team",
             "ensemble_predicted_result", "actual_result",
+            "pred_goals_total", "actual_goals_total",
+            "pred_goals_1h", "actual_goals_1h",
+            "pred_goals_2h", "actual_goals_2h",
             "prediction_accurate", "actual_outcome_probability"
         ]].copy()
+        
         all_matches_display.columns = [
             "Match", "Group", "Home", "Away",
-            "Predicted", "Actual", "Accurate", "Confidence"
+            "Predicted", "Actual",
+            "Pred Total Goals", "Actual Total Goals",
+            "Pred 1H Goals", "Actual 1H Goals",
+            "Pred 2H Goals", "Actual 2H Goals",
+            "Result Correct", "Confidence"
         ]
+        
+        # Format columns
         all_matches_display["Predicted"] = all_matches_display["Predicted"].str.replace("_", " ").str.title()
         all_matches_display["Actual"] = all_matches_display["Actual"].str.replace("_", " ").str.title()
         all_matches_display["Confidence"] = (all_matches_display["Confidence"] * 100).round(1).astype(str) + "%"
+        
+        # Round goal columns
+        for col in ["Pred Total Goals", "Pred 1H Goals", "Pred 2H Goals"]:
+            all_matches_display[col] = all_matches_display[col].round(1)
         
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
     else:

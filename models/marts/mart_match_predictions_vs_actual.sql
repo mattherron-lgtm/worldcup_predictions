@@ -27,6 +27,18 @@ actual_results as (
     where group_name is not null
 ),
 
+goals_by_half as (
+    select
+        fixture_id,
+        goals_1h,
+        goals_2h,
+        home_goals_1h,
+        home_goals_2h,
+        away_goals_1h,
+        away_goals_2h
+    from {{ ref('int_match_goals_by_half') }}
+),
+
 comparison as (
     select
         f.fixture_id,
@@ -74,10 +86,19 @@ comparison as (
         
         -- Score difference (actual vs xG)
         abs(ar.home_goals - f.home_xg) as home_xg_diff,
-        abs(ar.away_goals - f.away_xg) as away_xg_diff
+        abs(ar.away_goals - f.away_xg) as away_xg_diff,
+        
+        -- Actual goals by half (when match is played)
+        coalesce(gbh.goals_1h, 0) as actual_goals_1h,
+        coalesce(gbh.goals_2h, 0) as actual_goals_2h,
+        coalesce(gbh.home_goals_1h, 0) as actual_home_goals_1h,
+        coalesce(gbh.home_goals_2h, 0) as actual_home_goals_2h,
+        coalesce(gbh.away_goals_1h, 0) as actual_away_goals_1h,
+        coalesce(gbh.away_goals_2h, 0) as actual_away_goals_2h
         
     from fixtures f
     left join actual_results ar on f.match_number = ar.match_number
+    left join goals_by_half gbh on f.fixture_id = gbh.fixture_id
 )
 
 select * from comparison
