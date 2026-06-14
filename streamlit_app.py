@@ -172,6 +172,23 @@ def load_goalscorers(_client, fixture_id):
     """)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_component_predictions(_client):
+    """Load component-level predictions for all matches."""
+    return run_query(_client, f"""
+        SELECT
+            match_number, group_name, home_team, away_team,
+            poisson_p_home_win, poisson_p_draw, poisson_p_away_win, poisson_predicted_result,
+            bqml_p_home_win, bqml_p_draw, bqml_p_away_win, bqml_predicted_result,
+            odds_p_home_win, odds_p_draw, odds_p_away_win,
+            ensemble_p_home_win, ensemble_p_draw, ensemble_p_away_win,
+            actual_result, home_goals, away_goals
+        FROM {tbl('pred_group_stage_combined')}
+        WHERE match_number <= 8
+        ORDER BY match_number
+    """)
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def render_sidebar():
@@ -613,6 +630,74 @@ def page_model_performance(client):
             all_matches_display[col] = all_matches_display[col].round(1)
         
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
+        
+        # ─── Component Accuracy Analysis ───
+        st.divider()
+        st.markdown("**Component Accuracy Deep-Dive**")
+        st.caption("How each model component performed on completed matches")
+        
+        with st.spinner("Loading component predictions…"):
+            components_df = load_component_predictions(client)
+        
+        # Only analyze completed matches (those with actual_result)
+        completed_components = components_df[components_df["actual_result"].notna()].copy()
+        
+        if len(completed_components) > 0:
+            # Helper function to get predicted result
+            def get_predicted_result(p_home, p_draw, p_away):
+                if pd.isna(p_home) or pd.isna(p_draw) or pd.isna(p_away):
+                    return "No prediction"
+                max_prob = max(p_home, p_draw, p_away)
+                if max_prob == p_home:
+                    return "Home Win"
+                elif max_prob == p_draw:
+                    return "Draw"
+                else:
+                    return "Away Win"
+            
+            # Calculate component accuracy
+            components_df["poisson_correct"] = components_df["poisson_predicted_result"] == components_df["actual_result"]
+            components_df["bqml_correct"] = components_df["bqml_predicted_result"] == components_df["actual_result"]
+            
+            # For odds, compute result from probabilities if available
+            components_df["odds_predicted_result"] = components_df.apply(
+                lambda row: get_predicted_result(row["odds_p_home_win"], row["odds_p_draw"], row["odds_p_away_win"]),
+                axis=1
+            )
+            components_df["odds_correct"] = (components_df["odds_predicted_result"] == components_df["actual_result"]) & (components_df["odds_predicted_result"] != "No prediction")
+            
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            poisson_acc = components_df["poisson_correct"].sum() / len(components_df) * 100
+            bqml_acc = components_df["bqml_correct"].sum() / len(components_df) * 100
+            odds_acc = components_df["odds_correct"].sum() / components_df["odds_correct"].notna().sum() * 100 if components_df["odds_correct"].notna().sum() > 0 else 0
+            
+            with col1:
+                st.metric("Poisson Accuracy", f"{poisson_acc:.0f}%")
+            with col2:
+                st.metric("BQML Accuracy", f"{bqml_acc:.0f}%")
+            with col3:
+                st.metric("Odds Accuracy", f"{odds_acc:.0f}%")
+            with col4:
+                ensemble_acc = (completed_components["prediction_accurate"] == "correct").sum() / len(completed_components) * 100
+                st.metric("Ensemble Accuracy", f"{ensemble_acc:.0f}%")
+            
+            # Detailed comparison table
+            st.markdown("**Component Predictions vs Actual**")
+            component_comparison = components_df[[
+                "match_number", "home_team", "away_team",
+                "poisson_predicted_result", "bqml_predicted_result", "odds_predicted_result",
+                "actual_result", "home_goals", "away_goals"
+            ]].copy()
+            
+            component_comparison.columns = [
+                "Match", "Home", "Away",
+                "Poisson", "BQML", "Odds",
+                "Actual", "H Goals", "A Goals"
+            ]
+            
+            st.dataframe(component_comparison, use_container_width=True, hide_index=True, height=400)
     else:
         st.info("No match results yet. Check back once matches are played!")
 
