@@ -77,6 +77,9 @@ jobs:
           echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/sa_key.json
           export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json
           
+          # Install dbt packages
+          dbt deps
+          
           # Run dbt
           dbt seed --select wc_2026_teams wc_2026_venues wc_2026_squad_availability fifa_world_cup_2026_schedule
           dbt run
