@@ -16,17 +16,23 @@ with schedule as (
     from {{ ref('fifa_world_cup_2026_schedule') }}
 ),
 
+-- Read directly from staging table with all 2026 FIFA World Cup results  
 results as (
     select
-        match_date as result_date,
+        date as result_date,
         home_team,
         away_team,
-        home_goals,
-        away_goals,
+        safe_cast(home_score as int64) as home_goals,
+        safe_cast(away_score as int64) as away_goals,
         tournament,
-        result
-    from {{ ref('stg_results__international_matches') }}
+        case
+            when safe_cast(home_score as int64) > safe_cast(away_score as int64) then 'home_win'
+            when safe_cast(home_score as int64) = safe_cast(away_score as int64) then 'draw'
+            else 'away_win'
+        end as result
+    from `analytics-project-production.ML_WC_2026.staging_historical_results_kaggle`
     where tournament = 'FIFA World Cup'
+        and date >= '2026-06-01'  -- Only 2026 World Cup matches
 ),
 
 joined as (
@@ -47,7 +53,7 @@ joined as (
     left join results r
         on lower(s.home_team) = lower(r.home_team)
         and lower(s.away_team) = lower(r.away_team)
-        and abs(date_diff(s.scheduled_date, r.result_date, day)) <= 1  -- Allow 1 day difference for timezone
+        and abs(date_diff(cast(r.result_date as date), s.scheduled_date, DAY)) <= 1  -- Allow 1 day difference for timezone
 )
 
 select * from joined
