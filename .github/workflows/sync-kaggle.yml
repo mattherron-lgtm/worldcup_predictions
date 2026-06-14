@@ -25,6 +25,20 @@ jobs:
           pip install --upgrade pip
           pip install kagglehub google-cloud-bigquery pandas
       
+      - name: Debug - Check secrets are loaded
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "Checking secrets..."
+          if [ -z "$KAGGLE_USERNAME" ]; then echo "❌ KAGGLE_USERNAME not set"; exit 1; fi
+          echo "✅ KAGGLE_USERNAME is set"
+          if [ -z "$KAGGLE_KEY" ]; then echo "❌ KAGGLE_KEY not set"; exit 1; fi
+          echo "✅ KAGGLE_KEY is set"
+          if [ -z "$GCP_SA_KEY" ]; then echo "❌ GCP_SA_KEY not set"; exit 1; fi
+          echo "✅ GCP_SA_KEY is set"
+      
       - name: Sync Kaggle data to BigQuery
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
