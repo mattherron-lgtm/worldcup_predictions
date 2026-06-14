@@ -52,16 +52,14 @@ jobs:
       
       - name: Run dbt models
         env:
-          DBT_PROFILES_DIR: ${{ github.workspace }}
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
         run: |
           # Write service account key to file FIRST
           echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/sa_key.json
           export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json
           
-          # Create profiles.yml for dbt (referencing the temp keyfile)
-          mkdir -p ~/.dbt
-          cat > ~/.dbt/profiles.yml << 'EOF'
+          # Create profiles.yml in workspace (overrides checked-in version)
+          cat > profiles.yml << 'EOF'
           worldcup_predictions:
             outputs:
               prod:
@@ -75,6 +73,9 @@ jobs:
                 keyfile: /tmp/sa_key.json
             target: prod
           EOF
+          
+          # Set dbt profiles directory to current workspace
+          export DBT_PROFILES_DIR=$(pwd)
           
           # Install dbt packages
           dbt deps
