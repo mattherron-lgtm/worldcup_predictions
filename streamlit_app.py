@@ -545,9 +545,9 @@ def page_model_performance(client):
         all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
         
         # Create score strings (handle NaN for future matches)
-        all_matches["pred_score"] = (
-            all_matches["pred_goals_total"].round(0).astype(int).astype(str) + 
-            " (avg)"
+        all_matches["pred_score"] = all_matches.apply(
+            lambda row: f"{row['home_xg']:.0f}-{row['away_xg']:.0f}",
+            axis=1
         )
         all_matches["actual_score"] = all_matches.apply(
             lambda row: f"{int(row['home_goals'])}-{int(row['away_goals'])}" 
@@ -577,7 +577,13 @@ def page_model_performance(client):
         
         # Format columns
         all_matches_display["Predicted"] = all_matches_display["Predicted"].str.replace("_", " ").str.title()
-        all_matches_display["Actual"] = all_matches_display["Actual"].str.replace("_", " ").str.title()
+        
+        # Set Actual to "Pending" if match hasn't been played (Actual Score is "TBD")
+        all_matches_display["Actual"] = all_matches_display.apply(
+            lambda row: "Pending" if row["Actual Score"] == "TBD" else row["Actual"].replace("_", " ").title(),
+            axis=1
+        )
+        
         all_matches_display["Confidence"] = (all_matches_display["Confidence"] * 100).round(1).astype(str) + "%"
         
         # Round goal columns
@@ -585,6 +591,17 @@ def page_model_performance(client):
             all_matches_display[col] = all_matches_display[col].round(1)
         
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
+        
+        # Add color coding legend
+        st.markdown("""
+        <div style="margin-top: 20px; font-size: 13px; color: #666;">
+        <p><strong>Result Correct:</strong> 
+        <span style="background-color: #90EE90; padding: 3px 6px; border-radius: 3px; margin-left: 5px;">correct</span>
+        <span style="background-color: #FF6B6B; color: white; padding: 3px 6px; border-radius: 3px; margin-left: 5px;">incorrect</span>
+        <span style="background-color: #FFE5B4; padding: 3px 6px; border-radius: 3px; margin-left: 5px;">pending</span>
+        </p>
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.info("No match results yet. Check back once matches are played!")
 
