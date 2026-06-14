@@ -544,11 +544,21 @@ def page_model_performance(client):
         # Format actual total goals
         all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
         
+        # Create score strings
+        all_matches["pred_score"] = (
+            all_matches["pred_goals_total"].round(0).astype(int).astype(str) + 
+            " (avg)"
+        )
+        all_matches["actual_score"] = (
+            all_matches["home_goals"].astype(int).astype(str) + "-" +
+            all_matches["away_goals"].astype(int).astype(str)
+        )
+        
         # Create display table with all columns
         all_matches_display = all_matches[[
             "match_number", "group_name", "home_team", "away_team",
             "ensemble_predicted_result", "actual_result",
-            "pred_goals_total", "actual_goals_total",
+            "pred_score", "actual_score",
             "pred_goals_1h", "actual_goals_1h",
             "pred_goals_2h", "actual_goals_2h",
             "prediction_accurate", "actual_outcome_probability"
@@ -557,7 +567,7 @@ def page_model_performance(client):
         all_matches_display.columns = [
             "Match", "Group", "Home", "Away",
             "Predicted", "Actual",
-            "Pred Total Goals", "Actual Total Goals",
+            "Pred Score", "Actual Score",
             "Pred 1H Goals", "Actual 1H Goals",
             "Pred 2H Goals", "Actual 2H Goals",
             "Result Correct", "Confidence"
@@ -569,7 +579,7 @@ def page_model_performance(client):
         all_matches_display["Confidence"] = (all_matches_display["Confidence"] * 100).round(1).astype(str) + "%"
         
         # Round goal columns
-        for col in ["Pred Total Goals", "Pred 1H Goals", "Pred 2H Goals"]:
+        for col in ["Pred 1H Goals", "Pred 2H Goals"]:
             all_matches_display[col] = all_matches_display[col].round(1)
         
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
