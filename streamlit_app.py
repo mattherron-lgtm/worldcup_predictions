@@ -613,17 +613,6 @@ def page_model_performance(client):
             all_matches_display[col] = all_matches_display[col].round(1)
         
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
-        
-        # Add color coding legend
-        st.markdown("""
-        <div style="margin-top: 20px; font-size: 13px; color: #666;">
-        <p><strong>Result Correct:</strong> 
-        <span style="background-color: #90EE90; padding: 3px 6px; border-radius: 3px; margin-left: 5px;">correct</span>
-        <span style="background-color: #FF6B6B; color: white; padding: 3px 6px; border-radius: 3px; margin-left: 5px;">incorrect</span>
-        <span style="background-color: #FFE5B4; padding: 3px 6px; border-radius: 3px; margin-left: 5px;">pending</span>
-        </p>
-        </div>
-        """, unsafe_allow_html=True)
     else:
         st.info("No match results yet. Check back once matches are played!")
 
