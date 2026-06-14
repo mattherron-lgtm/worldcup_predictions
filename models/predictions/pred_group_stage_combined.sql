@@ -113,12 +113,15 @@ blended as (
     left join odds   o on p.home_team = o.home_team and p.away_team = o.away_team
 ),
 
--- Apply draw confidence boost (15% increase) to correct under-prediction of draws in group stage
+-- Apply draw confidence boost (70% increase) to correct severe under-prediction of draws in group stage
 -- Rationale: Group matches show ~37% draw rate, models under-estimate at ~25%
+-- Analysis: Matches 3, 7, 8 all had draws but model predicted other outcomes
+-- Even with 15% boost, draw was still 2nd/3rd highest probability
+-- 70% boost (~1.7x) aims to prioritize draws for borderline matches
 draw_boosted as (
     select
         *,
-        ensemble_p_draw * 1.15 as ensemble_p_draw_boosted  -- 15% boost to draw probability
+        ensemble_p_draw * 1.70 as ensemble_p_draw_boosted  -- 70% boost to draw probability
     from blended
 ),
 
