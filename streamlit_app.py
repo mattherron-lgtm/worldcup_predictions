@@ -513,23 +513,25 @@ def page_model_performance(client):
 
         st.divider()
         
-        # Recent matches
-        st.markdown("**Recent Matches**")
-        recent = completed.tail(10).copy()
-        recent_display = recent[[
+        # All matches (scrollable)
+        st.markdown(f"**All Completed Matches ({len(completed)} total)**")
+        
+        # Sort by match number descending (most recent first)
+        all_matches = completed.sort_values("match_number", ascending=False).copy()
+        all_matches_display = all_matches[[
             "match_number", "group_name", "home_team", "away_team",
             "ensemble_predicted_result", "actual_result",
             "prediction_accurate", "actual_outcome_probability"
         ]].copy()
-        recent_display.columns = [
+        all_matches_display.columns = [
             "Match", "Group", "Home", "Away",
             "Predicted", "Actual", "Accurate", "Confidence"
         ]
-        recent_display["Predicted"] = recent_display["Predicted"].str.replace("_", " ").str.title()
-        recent_display["Actual"] = recent_display["Actual"].str.replace("_", " ").str.title()
-        recent_display["Confidence"] = (recent_display["Confidence"] * 100).round(1).astype(str) + "%"
+        all_matches_display["Predicted"] = all_matches_display["Predicted"].str.replace("_", " ").str.title()
+        all_matches_display["Actual"] = all_matches_display["Actual"].str.replace("_", " ").str.title()
+        all_matches_display["Confidence"] = (all_matches_display["Confidence"] * 100).round(1).astype(str) + "%"
         
-        st.dataframe(recent_display, use_container_width=True, hide_index=True)
+        st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
     else:
         st.info("No match results yet. Check back once matches are played!")
 
