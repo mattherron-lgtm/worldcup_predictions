@@ -46,6 +46,41 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
         run: python scripts/sync_kaggle_historical_results.py
       
+      - name: Install dbt and dependencies
+        run: |
+          pip install dbt-bigquery dbt-core
+      
+      - name: Run dbt models
+        env:
+          DBT_PROFILES_DIR: ${{ github.workspace }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          # Create profiles.yml for dbt
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'EOF'
+          worldcup_predictions:
+            outputs:
+              prod:
+                type: bigquery
+                method: service-account-json
+                project: analytics-project-production
+                dataset: ML_WC_2026
+                threads: 4
+                timeout_seconds: 300
+                location: US
+                priority: interactive
+                retries: 1
+            target: prod
+          EOF
+          
+          # Write service account key to file
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/sa_key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json
+          
+          # Run dbt
+          dbt seed --select wc_2026_teams wc_2026_venues wc_2026_squad_availability fifa_world_cup_2026_schedule
+          dbt run
+      
       - name: Notify on success
         if: success()
         run: echo "✅ Historical results synced successfully"
