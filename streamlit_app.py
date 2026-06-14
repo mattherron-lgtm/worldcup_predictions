@@ -516,8 +516,8 @@ def page_model_performance(client):
         # All matches (scrollable)
         st.markdown(f"**All Completed Matches ({len(completed)} total)**")
         
-        # Sort by match number descending (most recent first)
-        all_matches = completed.sort_values("match_number", ascending=False).copy()
+        # Sort by match number ascending (earliest first)
+        all_matches = completed.sort_values("match_number", ascending=True).copy()
         all_matches_display = all_matches[[
             "match_number", "group_name", "home_team", "away_team",
             "ensemble_predicted_result", "actual_result",
