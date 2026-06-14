@@ -464,21 +464,21 @@ def page_model_performance(client):
         with col1:
             st.markdown(f"**{group} - Predicted**")
             pred_display = group_comp[[
-                "team", "pred_pts", "pred_gf", "pred_ga", "pred_gd", "p_finish_1st"
+                "team", "pred_pts", "pred_gf", "pred_gd", "p_finish_1st"
             ]].copy()
-            pred_display.columns = ["Team", "Pts", "GF", "GA", "GD", "1st %"]
+            pred_display.columns = ["Team", "Pts", "GF", "GD", "1st %"]
             pred_display["1st %"] = (pred_display["1st %"] * 100).round(1).astype(str) + "%"
-            for col in ["Pts", "GF", "GA", "GD"]:
+            for col in ["Pts", "GF", "GD"]:
                 pred_display[col] = pred_display[col].round(1)
             st.dataframe(pred_display, use_container_width=True, hide_index=True)
         
         with col2:
             st.markdown(f"**{group} - Actual**")
             actual_display = group_comp[[
-                "team", "actual_pts", "actual_gf", "actual_ga", "actual_gd", "actual_position"
+                "team", "actual_pts", "actual_gf", "actual_gd", "actual_position"
             ]].copy()
-            actual_display.columns = ["Team", "Pts", "GF", "GA", "GD", "Pos"]
-            for col in ["Pts", "GF", "GA", "GD"]:
+            actual_display.columns = ["Team", "Pts", "GF", "GD", "Pos"]
+            for col in ["Pts", "GF", "GD"]:
                 actual_display[col] = actual_display[col].round(1)
             actual_display = actual_display.dropna(subset=["Pos"])
             if len(actual_display) > 0:
