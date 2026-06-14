@@ -545,9 +545,9 @@ def page_model_performance(client):
         all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
         
         # Create score strings (handle NaN for future matches)
-        all_matches["pred_score"] = (
-            all_matches["pred_goals_total"].round(0).astype(int).astype(str) + 
-            " (avg)"
+        all_matches["pred_score"] = all_matches.apply(
+            lambda row: f"{row['home_xg']:.0f}-{row['away_xg']:.0f}",
+            axis=1
         )
         all_matches["actual_score"] = all_matches.apply(
             lambda row: f"{int(row['home_goals'])}-{int(row['away_goals'])}" 
@@ -559,7 +559,7 @@ def page_model_performance(client):
         # Create display table with all columns
         all_matches_display = all_matches[[
             "match_number", "group_name", "home_team", "away_team",
-            "ensemble_predicted_result", "actual_result",
+            "ensemble_predicted_result", "actual_result", "actual_score",
             "pred_score", "actual_score",
             "pred_goals_1h", "actual_goals_1h",
             "pred_goals_2h", "actual_goals_2h",
@@ -568,7 +568,7 @@ def page_model_performance(client):
         
         all_matches_display.columns = [
             "Match", "Group", "Home", "Away",
-            "Predicted", "Actual",
+            "Predicted", "Actual", "Actual_Status",
             "Pred Score", "Actual Score",
             "Pred 1H Goals", "Actual 1H Goals",
             "Pred 2H Goals", "Actual 2H Goals",
@@ -577,14 +577,39 @@ def page_model_performance(client):
         
         # Format columns
         all_matches_display["Predicted"] = all_matches_display["Predicted"].str.replace("_", " ").str.title()
-        all_matches_display["Actual"] = all_matches_display["Actual"].str.replace("_", " ").str.title()
+        
+        # Set Actual to "Pending" if match hasn't been played (Actual Score is "TBD")
+        all_matches_display["Actual"] = all_matches_display.apply(
+            lambda row: "Pending" if row["Actual_Status"] == "TBD" else row["Actual"].replace("_", " ").str.title(),
+            axis=1
+        )
+        
         all_matches_display["Confidence"] = (all_matches_display["Confidence"] * 100).round(1).astype(str) + "%"
         
         # Round goal columns
         for col in ["Pred 1H Goals", "Pred 2H Goals"]:
             all_matches_display[col] = all_matches_display[col].round(1)
         
-        st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
+        # Drop the temporary Actual_Status column
+        all_matches_display = all_matches_display.drop(columns=["Actual_Status"])
+        
+        # Add color coding using Streamlit's built-in styling
+        def color_result_correct(val):
+            """Apply color to Result Correct column"""
+            if val == "correct":
+                color = "#90EE90"  # Light green
+            elif val == "incorrect":
+                color = "#FF6B6B"  # Light red
+            else:
+                color = "#FFE5B4"  # Peach (pending)
+            return f"background-color: {color}"
+        
+        # Apply styling using pandas Styler
+        styled_df = all_matches_display.style.map(
+            color_result_correct, 
+            subset=["Result Correct"]
+        )
+        st.dataframe(styled_df, use_container_width=True, hide_index=True, height=600)
     else:
         st.info("No match results yet. Check back once matches are played!")
 
