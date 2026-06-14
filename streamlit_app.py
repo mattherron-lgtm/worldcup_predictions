@@ -559,7 +559,7 @@ def page_model_performance(client):
         # Create display table with all columns
         all_matches_display = all_matches[[
             "match_number", "group_name", "home_team", "away_team",
-            "ensemble_predicted_result", "actual_result", "actual_score",
+            "ensemble_predicted_result", "actual_result",
             "pred_score", "actual_score",
             "pred_goals_1h", "actual_goals_1h",
             "pred_goals_2h", "actual_goals_2h",
@@ -568,7 +568,7 @@ def page_model_performance(client):
         
         all_matches_display.columns = [
             "Match", "Group", "Home", "Away",
-            "Predicted", "Actual", "Actual_Status",
+            "Predicted", "Actual",
             "Pred Score", "Actual Score",
             "Pred 1H Goals", "Actual 1H Goals",
             "Pred 2H Goals", "Actual 2H Goals",
@@ -580,7 +580,7 @@ def page_model_performance(client):
         
         # Set Actual to "Pending" if match hasn't been played (Actual Score is "TBD")
         all_matches_display["Actual"] = all_matches_display.apply(
-            lambda row: "Pending" if row["Actual_Status"] == "TBD" else row["Actual"].replace("_", " ").title(),
+            lambda row: "Pending" if row["Actual Score"] == "TBD" else row["Actual"].replace("_", " ").title(),
             axis=1
         )
         
@@ -590,16 +590,13 @@ def page_model_performance(client):
         for col in ["Pred 1H Goals", "Pred 2H Goals"]:
             all_matches_display[col] = all_matches_display[col].round(1)
         
-        # Drop the temporary Actual_Status column
-        all_matches_display = all_matches_display.drop(columns=["Actual_Status"])
-        
         # Display the table
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
         
-        # Add color coding note
+        # Add color coding legend
         st.markdown("""
         <div style="margin-top: 20px; font-size: 14px;">
-        <p><strong>Result Correct:</strong> 
+        <p><strong>Result Correct Legend:</strong> 
         <span style="background-color: #90EE90; padding: 2px 8px; border-radius: 3px;">● Correct</span>
         <span style="background-color: #FF6B6B; color: white; padding: 2px 8px; border-radius: 3px; margin-left: 10px;">● Incorrect</span>
         <span style="background-color: #FFE5B4; padding: 2px 8px; border-radius: 3px; margin-left: 10px;">● Pending</span>
