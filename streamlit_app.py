@@ -544,11 +544,33 @@ def page_model_performance(client):
         # Format actual total goals
         all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
         
-        # Create score strings (handle NaN for future matches)
-        all_matches["pred_score"] = all_matches.apply(
-            lambda row: f"{row['home_xg']:.0f}-{row['away_xg']:.0f}",
-            axis=1
-        )
+        # Create score strings aligned with predicted result
+        def get_aligned_pred_score(row):
+            """Generate predicted score that matches the predicted result"""
+            h_xg = row['home_xg']
+            a_xg = row['away_xg']
+            pred_result = row['ensemble_predicted_result']
+            
+            # Round xG to integers
+            h_rounded = round(h_xg)
+            a_rounded = round(a_xg)
+            
+            # Ensure the rounded score matches the predicted result
+            if pred_result == 'Home Win':
+                # Ensure home > away
+                if h_rounded <= a_rounded:
+                    h_rounded = a_rounded + 1
+            elif pred_result == 'Away Win':
+                # Ensure away > home
+                if a_rounded <= h_rounded:
+                    a_rounded = h_rounded + 1
+            elif pred_result == 'Draw':
+                # Make them equal
+                h_rounded = a_rounded = max(round((h_xg + a_xg) / 2), 1)
+            
+            return f"{h_rounded}-{a_rounded}"
+        
+        all_matches["pred_score"] = all_matches.apply(get_aligned_pred_score, axis=1)
         all_matches["actual_score"] = all_matches.apply(
             lambda row: f"{int(row['home_goals'])}-{int(row['away_goals'])}" 
                         if pd.notna(row['home_goals']) and pd.notna(row['away_goals']) 
