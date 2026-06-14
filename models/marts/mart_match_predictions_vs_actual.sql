@@ -17,15 +17,14 @@ with fixtures as (
 
 actual_results as (
     select
-        `Match Number` as match_number,
-        `Home Team` as home_team,
-        `Away Team` as away_team,
-        cast(`Home Goals` as int64) as home_goals,
-        cast(`Away Goals` as int64) as away_goals
-    from {{ ref('fifa_world_cup_2026_schedule') }}
-    where `Group` is not null
-      and `Home Goals` is not null
-      and `Home Goals` != ''
+        match_number,
+        home_team,
+        away_team,
+        home_goals,
+        away_goals,
+        actual_result
+    from {{ ref('int_wc__schedule_with_results') }}
+    where group_name is not null
 ),
 
 comparison as (

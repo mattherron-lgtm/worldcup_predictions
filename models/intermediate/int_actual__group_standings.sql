@@ -1,22 +1,20 @@
 -- =============================================================
 -- Actual group stage standings calculated from match results.
--- Reads Home Goals / Away Goals from the seed CSV.
--- Re-calculates each time dbt runs once results are entered.
+-- Automatically joins schedule with historical results from results.csv
+-- Re-calculates each time dbt runs as new results are available.
 -- =============================================================
 
 with matches as (
     select
-        `Match Number`    as match_number,
-        `Group`           as group_name,
-        `Home Team`       as home_team,
-        `Away Team`       as away_team,
-        cast(`Home Goals` as int64) as home_goals,
-        cast(`Away Goals` as int64) as away_goals
-    from {{ ref('fifa_world_cup_2026_schedule') }}
-    where `Group` is not null
-      and trim(`Group`) != ''
-      and `Home Goals` is not null
-      and `Home Goals` != ''
+        match_number,
+        group_name,
+        home_team,
+        away_team,
+        home_goals,
+        away_goals
+    from {{ ref('int_wc__schedule_with_results') }}
+    where group_name is not null
+      and home_goals is not null
 ),
 
 -- Calculate points and goal metrics

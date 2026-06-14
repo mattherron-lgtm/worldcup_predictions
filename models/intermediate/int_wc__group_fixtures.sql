@@ -1,26 +1,25 @@
 -- =============================================================
 -- Group stage fixtures sourced from the official FIFA 2026 schedule.
 -- Joined with wc_2026_teams to enrich with ELO, confederation, group seed.
+-- Joined with schedule_with_results to include actual match outcomes.
 -- Includes real kickoff times (UTC + local) and venue.
 -- =============================================================
 
-with schedule as (
+with schedule_with_results as (
     select
-        `Match Number`    as match_number,
-        `Round Number`    as group_round,
-        `Date Time - BST` as kickoff_bst_raw,
-        `Local Time`      as kickoff_local_raw,
-        `Location`        as venue,
-        `Home Team`       as home_team,
-        `Away Team`       as away_team,
-        `Group`           as group_name,
-        `Home Goals`      as home_goals,
-        `Away Goals`      as away_goals
-    from {{ ref('fifa_world_cup_2026_schedule') }}
-    -- Group stage only: Group column is populated and teams are confirmed
-    where `Group` is not null
-      and trim(`Group`) != ''
-      and `Home Team` != 'To be announced'
+        match_number,
+        scheduled_date,
+        kickoff_bst_raw,
+        kickoff_local_raw,
+        group_name,
+        home_team,
+        away_team,
+        home_goals,
+        away_goals,
+        actual_result,
+        venue
+    from {{ ref('int_wc__schedule_with_results') }}
+    where group_name is not null
 ),
 
 teams as (
@@ -42,7 +41,7 @@ fixtures as (
         {{ dbt_utils.generate_surrogate_key(['s.group_name', 's.home_team', 's.away_team']) }} as fixture_id,
         s.match_number,
         s.group_name,
-        s.group_round,
+        1 as group_round,  -- Hard-coded to 1 since all group stage matches are in the initial round
 
         s.home_team,
         ht.group_seed             as home_seed,
@@ -80,9 +79,10 @@ fixtures as (
 
         s.venue,
         s.home_goals,
-        s.away_goals
+        s.away_goals,
+        s.actual_result
 
-    from schedule s
+    from schedule_with_results s
     left join teams ht  on ht.team_name  = s.home_team
     left join teams awt on awt.team_name = s.away_team
 )
