@@ -113,12 +113,48 @@ blended as (
     left join odds   o on p.home_team = o.home_team and p.away_team = o.away_team
 ),
 
+-- Apply draw confidence boost (15% increase) to correct under-prediction of draws in group stage
+-- Rationale: Group matches show ~37% draw rate, models under-estimate at ~25%
+draw_boosted as (
+    select
+        *,
+        ensemble_p_draw * 1.15 as ensemble_p_draw_boosted  -- 15% boost to draw probability
+    from blended
+),
+
 -- Final normalisation to ensure ensemble probs sum to 1.0
 normalised as (
     select
-        *,
-        ensemble_p_home_win + ensemble_p_draw + ensemble_p_away_win as prob_sum
-    from blended
+        fixture_id,
+        group_name,
+        group_round,
+        home_team,
+        away_team,
+        elo_diff,
+        home_xg,
+        away_xg,
+        home_form_pts_pct,
+        away_form_pts_pct,
+        h2h_home_win_rate,
+        h2h_draw_rate,
+        poisson_p_home_win,
+        poisson_p_draw,
+        poisson_p_away_win,
+        poisson_predicted_result,
+        bqml_p_home_win,
+        bqml_p_draw,
+        bqml_p_away_win,
+        bqml_predicted_result,
+        odds_p_home_win,
+        odds_p_draw,
+        odds_p_away_win,
+        bookmaker_count,
+        odds_fetched_at,
+        ensemble_p_home_win,
+        ensemble_p_draw_boosted as ensemble_p_draw_adjusted,  -- boosted draw prob
+        ensemble_p_away_win,
+        ensemble_p_home_win + ensemble_p_draw_boosted + ensemble_p_away_win as prob_sum
+    from draw_boosted
 )
 
 select
@@ -134,10 +170,10 @@ select
     away_form_pts_pct,
     h2h_home_win_rate,
 
-    -- Normalised ensemble probabilities
-    round(safe_divide(ensemble_p_home_win, prob_sum), 4)    as p_home_win,
-    round(safe_divide(ensemble_p_draw,     prob_sum), 4)    as p_draw,
-    round(safe_divide(ensemble_p_away_win, prob_sum), 4)    as p_away_win,
+    -- Normalised ensemble probabilities (with draw boost applied)
+    round(safe_divide(ensemble_p_home_win, prob_sum), 4)           as p_home_win,
+    round(safe_divide(ensemble_p_draw_adjusted, prob_sum), 4)      as p_draw,
+    round(safe_divide(ensemble_p_away_win, prob_sum), 4)           as p_away_win,
 
     -- Component model predictions for transparency
     poisson_p_home_win,
@@ -154,22 +190,22 @@ select
     bookmaker_count,
     odds_fetched_at,
 
-    -- Ensemble most likely outcome
+    -- Ensemble most likely outcome (using boosted draw probability)
     case
         when safe_divide(ensemble_p_home_win, prob_sum) >=
-             safe_divide(ensemble_p_draw, prob_sum)
+             safe_divide(ensemble_p_draw_adjusted, prob_sum)
          and safe_divide(ensemble_p_home_win, prob_sum) >=
              safe_divide(ensemble_p_away_win, prob_sum)
         then 'home_win'
-        when safe_divide(ensemble_p_draw, prob_sum) >=
+        when safe_divide(ensemble_p_draw_adjusted, prob_sum) >=
              safe_divide(ensemble_p_away_win, prob_sum)
         then 'draw'
         else 'away_win'
-    end                                                     as ensemble_predicted_result,
+    end                                                            as ensemble_predicted_result,
 
     -- Implied odds (1 / probability) for comparison with bookmakers
-    round(safe_divide(1.0, safe_divide(ensemble_p_home_win, prob_sum)), 2) as implied_odds_home,
-    round(safe_divide(1.0, safe_divide(ensemble_p_draw,     prob_sum)), 2) as implied_odds_draw,
-    round(safe_divide(1.0, safe_divide(ensemble_p_away_win, prob_sum)), 2) as implied_odds_away
+    round(safe_divide(1.0, safe_divide(ensemble_p_home_win, prob_sum)), 2)           as implied_odds_home,
+    round(safe_divide(1.0, safe_divide(ensemble_p_draw_adjusted, prob_sum)), 2)      as implied_odds_draw,
+    round(safe_divide(1.0, safe_divide(ensemble_p_away_win, prob_sum)), 2)           as implied_odds_away
 
 from normalised
