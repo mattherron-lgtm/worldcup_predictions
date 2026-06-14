@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install kagglehub google-cloud-bigquery pandas
+          pip install kagglehub google-cloud-bigquery pandas pyarrow
       
       - name: Debug - Check secrets are loaded
         env:
