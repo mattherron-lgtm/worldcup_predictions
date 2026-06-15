@@ -560,10 +560,6 @@ def page_model_performance(client):
         all_matches["pred_goals_1h"] = (all_matches["pred_goals_total"] * 0.45).round(1)
         all_matches["pred_goals_2h"] = (all_matches["pred_goals_total"] * 0.55).round(1)
         
-        # Compute actual goals by half (sum of home + away for each half)
-        all_matches["actual_goals_1h"] = (all_matches["actual_home_goals_1h"] + all_matches["actual_away_goals_1h"]).fillna(0)
-        all_matches["actual_goals_2h"] = (all_matches["actual_home_goals_2h"] + all_matches["actual_away_goals_2h"]).fillna(0)
-        
         # Format actual total goals
         all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
         
