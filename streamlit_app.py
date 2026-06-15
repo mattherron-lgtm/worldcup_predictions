@@ -638,6 +638,7 @@ def page_model_performance(client):
         # Blank out actual-only columns for pending matches (not yet played)
         pending_mask = all_matches["is_pending"].values
         for col in ["Actual Score", "Actual 1H", "Actual 2H", "Result", "Confidence %"]:
+            all_matches_display[col] = all_matches_display[col].astype(object)
             all_matches_display.loc[pending_mask, col] = "—"
         
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
