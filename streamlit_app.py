@@ -560,6 +560,10 @@ def page_model_performance(client):
         all_matches["pred_goals_1h"] = (all_matches["pred_goals_total"] * 0.45).round(1)
         all_matches["pred_goals_2h"] = (all_matches["pred_goals_total"] * 0.55).round(1)
         
+        # Compute actual goals by half (sum of home + away for each half)
+        all_matches["actual_goals_1h"] = (all_matches["actual_home_goals_1h"] + all_matches["actual_away_goals_1h"]).fillna(0)
+        all_matches["actual_goals_2h"] = (all_matches["actual_home_goals_2h"] + all_matches["actual_away_goals_2h"]).fillna(0)
+        
         # Format actual total goals
         all_matches["actual_goals_total"] = all_matches["home_goals"] + all_matches["away_goals"]
         
@@ -611,9 +615,9 @@ def page_model_performance(client):
             "Match", "Group", "Home", "Away",
             "Predicted", "Actual",
             "Pred Score", "Actual Score",
-            "Pred 1H Goals", "Actual 1H Goals",
-            "Pred 2H Goals", "Actual 2H Goals",
-            "Result Correct", "Confidence"
+            "Pred 1H", "Actual 1H",
+            "Pred 2H", "Actual 2H",
+            "Result", "Confidence %"
         ]
         
         # Format columns
@@ -625,10 +629,10 @@ def page_model_performance(client):
             axis=1
         )
         
-        all_matches_display["Confidence"] = (all_matches_display["Confidence"] * 100).round(1).astype(str) + "%"
+        all_matches_display["Confidence %"] = (all_matches_display["Confidence %"] * 100).round(1).astype(str) + "%"
         
         # Round goal columns
-        for col in ["Pred 1H Goals", "Pred 2H Goals", "Actual 1H Goals", "Actual 2H Goals"]:
+        for col in ["Pred 1H", "Pred 2H", "Actual 1H", "Actual 2H"]:
             if col in all_matches_display.columns:
                 all_matches_display[col] = all_matches_display[col].astype(float).round(1)
         
