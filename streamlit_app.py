@@ -549,11 +549,14 @@ def page_model_performance(client):
 
         st.divider()
         
-        # All matches (scrollable)
-        st.markdown(f"**All Completed Matches ({len(completed)} total)**")
+        # All matches (scrollable) — show every fixture, completed and pending
+        st.markdown(f"**All Matches ({len(completed)} of {len(match_comp_df)} completed)**")
         
-        # Sort by match number ascending (earliest first)
-        all_matches = completed.sort_values("match_number", ascending=True).copy()
+        # Sort by match number ascending (earliest first) — include pending matches
+        all_matches = match_comp_df.sort_values("match_number", ascending=True).copy()
+        
+        # Flag pending matches (not yet played)
+        all_matches["is_pending"] = all_matches["home_goals"].isna() | all_matches["away_goals"].isna()
         
         # Add predicted goals by half (using 45/55 split: 45% 1H, 55% 2H)
         all_matches["pred_goals_total"] = all_matches["home_xg"] + all_matches["away_xg"]
@@ -632,6 +635,11 @@ def page_model_performance(client):
             if col in all_matches_display.columns:
                 all_matches_display[col] = all_matches_display[col].astype(float).round(1)
         
+        # Blank out actual-only columns for pending matches (not yet played)
+        pending_mask = all_matches["is_pending"].values
+        for col in ["Actual Score", "Actual 1H", "Actual 2H", "Result", "Confidence %"]:
+            all_matches_display.loc[pending_mask, col] = "—"
+        
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
         
         # ─── Component Accuracy Analysis ───
@@ -660,29 +668,29 @@ def page_model_performance(client):
                         return "Away Win"
                 
                 # Calculate component accuracy
-                components_df["poisson_correct"] = (
-                    (components_df["poisson_predicted_result"].notna()) & 
-                    (components_df["poisson_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                completed_components["poisson_correct"] = (
+                    (completed_components["poisson_predicted_result"].notna()) & 
+                    (completed_components["poisson_predicted_result"].str.lower() == completed_components["actual_result"].str.lower())
                 )
-                components_df["bqml_correct"] = (
-                    (components_df["bqml_predicted_result"].notna()) & 
-                    (components_df["bqml_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                completed_components["bqml_correct"] = (
+                    (completed_components["bqml_predicted_result"].notna()) & 
+                    (completed_components["bqml_predicted_result"].str.lower() == completed_components["actual_result"].str.lower())
                 )
                 
                 # For odds, compute result from probabilities if available
-                components_df["odds_predicted_result"] = components_df.apply(
+                completed_components["odds_predicted_result"] = completed_components.apply(
                     lambda row: get_predicted_result(row["odds_p_home_win"], row["odds_p_draw"], row["odds_p_away_win"]),
                     axis=1
                 )
-                components_df["odds_correct"] = (
-                    (components_df["odds_predicted_result"] != "No prediction") & 
-                    (components_df["odds_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                completed_components["odds_correct"] = (
+                    (completed_components["odds_predicted_result"] != "No prediction") & 
+                    (completed_components["odds_predicted_result"].str.lower() == completed_components["actual_result"].str.lower())
                 )
                 
                 # Ensemble from ensemble_predicted_result column
-                components_df["ensemble_correct"] = (
-                    (components_df["ensemble_predicted_result"].notna()) & 
-                    (components_df["ensemble_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                completed_components["ensemble_correct"] = (
+                    (completed_components["ensemble_predicted_result"].notna()) & 
+                    (completed_components["ensemble_predicted_result"].str.lower() == completed_components["actual_result"].str.lower())
                 )
                 
                 # Summary metrics

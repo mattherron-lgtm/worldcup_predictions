@@ -30,7 +30,7 @@ raw_shootouts as (
         away_team,
         winner as winning_team,
         first_shooter
-    from {{ source('raw', 'shootouts') }}
+    from {{ source('kaggle_staging', 'shootouts') }}
     where date is not null
         and home_team is not null
         and away_team is not null

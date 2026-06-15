@@ -37,7 +37,26 @@ sources:
           - name: neutral
             description: True if match played at a neutral venue
 
+      - name: former_names
+        description: Historical team name changes (e.g. Dahomey → Benin).
+        columns:
+          - name: current_name
+            description: Current team name
+          - name: former_name
+            description: Former team name
+          - name: start_date
+          - name: end_date
+
+  # Kaggle data synced daily by the GitHub Action (scripts/sync_kaggle_historical_results.py)
+  # which loads into ML_WC_2026.staging_*_kaggle. These tables are kept fresh automatically,
+  # unlike worldcup_raw_eu, so goalscorer/shootout models must read from here.
+  - name: kaggle_staging
+    database: "{{ var('bq_project') }}"
+    schema: ML_WC_2026
+    description: "Kaggle datasets synced daily to BigQuery by the GitHub Action."
+    tables:
       - name: goalscorers
+        identifier: staging_goalscorers_kaggle
         description: Individual goalscorer events for international matches.
         columns:
           - name: date
@@ -58,6 +77,7 @@ sources:
             description: True if penalty
 
       - name: shootouts
+        identifier: staging_shootouts_kaggle
         description: Penalty shootout results for matches that went to penalties.
         columns:
           - name: date
@@ -70,13 +90,3 @@ sources:
             description: Team that won the shootout
           - name: first_shooter
             description: Team that shot first
-
-      - name: former_names
-        description: Historical team name changes (e.g. Dahomey → Benin).
-        columns:
-          - name: current_name
-            description: Current team name
-          - name: former_name
-            description: Former team name
-          - name: start_date
-          - name: end_date

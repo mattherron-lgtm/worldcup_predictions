@@ -13,7 +13,7 @@
 -- =============================================================
 
 with source as (
-    select * from {{ source('raw', 'goalscorers') }}
+    select * from {{ source('kaggle_staging', 'goalscorers') }}
 )
 
 select
@@ -24,7 +24,7 @@ select
     scorer,
     safe_cast(
         case 
-            when minute like '%+%' then cast(substring(minute, 1, 2) as int64) + 45
+            when cast(minute as string) like '%+%' then cast(substring(cast(minute as string), 1, 2) as int64) + 45
             else safe_cast(minute as int64)
         end as int64
     ) as goal_minute,
