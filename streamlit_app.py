@@ -578,15 +578,16 @@ def page_model_performance(client):
             a_rounded = round(a_xg)
             
             # Ensure the rounded score matches the predicted result
-            if pred_result == 'Home Win':
+            # Note: ensemble_predicted_result uses snake_case from SQL (home_win / away_win / draw)
+            if pred_result == 'home_win':
                 # Ensure home > away
                 if h_rounded <= a_rounded:
                     h_rounded = a_rounded + 1
-            elif pred_result == 'Away Win':
+            elif pred_result == 'away_win':
                 # Ensure away > home
                 if a_rounded <= h_rounded:
                     a_rounded = h_rounded + 1
-            elif pred_result == 'Draw':
+            elif pred_result == 'draw':
                 # Make them equal
                 h_rounded = a_rounded = max(round((h_xg + a_xg) / 2), 1)
             
@@ -861,6 +862,20 @@ def page_match_previews(client):
         st.markdown(st.session_state[cache_key])
     else:
         if st.button("✨ Generate Preview", type="primary"):
+            # Compute the model's predicted score the same way the match table does
+            h_xg = row['home_xg']
+            a_xg = row['away_xg']
+            pred_result = row['ensemble_predicted_result']
+            h_pred = round(h_xg)
+            a_pred = round(a_xg)
+            if pred_result == 'home_win' and h_pred <= a_pred:
+                h_pred = a_pred + 1
+            elif pred_result == 'away_win' and a_pred <= h_pred:
+                a_pred = h_pred + 1
+            elif pred_result == 'draw':
+                h_pred = a_pred = max(round((h_xg + a_xg) / 2), 1)
+            model_pred_score = f"{h_pred}–{a_pred}"
+
             prompt = (
                 f"2026 FIFA World Cup — Group {row['group_name']}, Matchday {int(row['group_round'])}\n"
                 f"Match: {row['home_team']} vs {row['away_team']}\n\n"
@@ -868,12 +883,13 @@ def page_match_previews(client):
                 f"- ELO: {row['home_team']} {int(row['home_elo'])} vs {row['away_team']} {int(row['away_elo'])}\n"
                 f"- Win probabilities: {row['home_team']} {row['p_home_win']:.1%} | Draw {row['p_draw']:.1%} | {row['away_team']} {row['p_away_win']:.1%}\n"
                 f"- Expected goals: {row['home_team']} {row['home_xg']:.2f} — {row['away_team']} {row['away_xg']:.2f}\n"
+                f"- Model predicted score: {model_pred_score} (use this exact score — do not invent a different one)\n"
                 f"- Recent form (pts %): {row['home_team']} {row['home_form_pts_pct']:.1%} | {row['away_team']} {row['away_form_pts_pct']:.1%}\n"
                 f"- Prediction: {row['ensemble_predicted_result'].replace('_', ' ').title()} ({row['model_agreement']})\n\n"
                 f"Write a match preview in exactly this format (max 150 words):\n"
                 f"**Form & context:** 2 sentences on recent form and what's at stake.\n"
                 f"**Key battle:** One tactical matchup to watch.\n"
-                f"**Predicted score:** X–X with one sentence reasoning.\n"
+                f"**Predicted score:** {model_pred_score} with one sentence reasoning.\n"
                 f"**Upset potential:** Low/Medium/High — one sentence why."
             )
             with st.spinner(f"Generating preview for {row['home_team']} vs {row['away_team']}…"):

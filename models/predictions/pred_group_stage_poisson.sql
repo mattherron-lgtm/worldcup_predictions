@@ -35,18 +35,28 @@ fixture_params as (
         -- Baseline league average
         coalesce(hs.league_avg_goals, 1.25)                     as mu,
 
-        -- Expected goals: attack_index × opponent_defense_index × league_avg
-        -- Clamp between 0.3 and 4.0 for numerical stability
-        greatest(0.3, least(4.0,
+        -- Expected goals: attack_index × opponent_defense_index × league_avg × ELO adjustment
+        -- ELO multiplier: exp(elo_diff / 1200)
+        --   Boost the stronger team's xG, reduce the weaker team's xG.
+        --   This corrects for the opponent-quality weighting in attack indices,
+        --   which underestimates strong teams' output against very weak opponents.
+        --   Examples (elo_diff = home_elo - away_elo):
+        --     +200 pts → home 1.18x, away 0.85x
+        --     +400 pts → home 1.40x, away 0.72x  (e.g. Germany vs Curaçao)
+        --     +577 pts → home 1.61x, away 0.62x  (e.g. Spain vs Cape Verde)
+        -- Clamp between 0.3 and 5.5 for numerical stability.
+        greatest(0.3, least(5.5,
             coalesce(hs.final_attack_index, 1.0)
             * coalesce(as_.final_defense_index, 1.0)
             * coalesce(hs.league_avg_goals, 1.25)
+            * exp(f.elo_diff / 1200.0)
         ))                                                      as home_xg,
 
-        greatest(0.3, least(4.0,
+        greatest(0.3, least(5.5,
             coalesce(as_.final_attack_index, 1.0)
             * coalesce(hs.final_defense_index, 1.0)
             * coalesce(hs.league_avg_goals, 1.25)
+            * exp(-f.elo_diff / 1200.0)
         ))                                                      as away_xg
 
     from fixtures f
@@ -54,10 +64,11 @@ fixture_params as (
     left join strengths as_ on f.away_team = as_.team
 ),
 
--- Generate Poisson PMF for k = 0..5 goals using BigQuery UNNEST trick
+-- Generate Poisson PMF for k = 0..7 goals using BigQuery UNNEST trick
 -- P(X=k | lambda) = exp(-lambda) * lambda^k / k!
+-- (expanded from 0-5 to 0-7 to capture high-scoring mismatches)
 goal_range as (
-    select k from unnest([0, 1, 2, 3, 4, 5]) as k
+    select k from unnest([0, 1, 2, 3, 4, 5, 6, 7]) as k
 ),
 
 -- Score probability matrix: P(home_goals=i, away_goals=j)
@@ -74,13 +85,15 @@ score_matrix as (
         -- Poisson PMF for home goals
         exp(-fp.home_xg) * pow(fp.home_xg, h.k)
             / case h.k when 0 then 1 when 1 then 1 when 2 then 2
-                       when 3 then 6 when 4 then 24 when 5 then 120 end
+                       when 3 then 6 when 4 then 24 when 5 then 120
+                       when 6 then 720 when 7 then 5040 end
                                         as p_home_score,
 
         -- Poisson PMF for away goals (independent)
         exp(-fp.away_xg) * pow(fp.away_xg, a.k)
             / case a.k when 0 then 1 when 1 then 1 when 2 then 2
-                       when 3 then 6 when 4 then 24 when 5 then 120 end
+                       when 3 then 6 when 4 then 24 when 5 then 120
+                       when 6 then 720 when 7 then 5040 end
                                         as p_away_score
 
     from fixture_params fp
