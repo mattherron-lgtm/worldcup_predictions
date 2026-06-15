@@ -600,6 +600,13 @@ def page_model_performance(client):
             axis=1
         )
         
+        # Confidence: probability of the actual outcome once played, else probability
+        # of the predicted outcome (the leading probability) for pending matches
+        all_matches["confidence"] = all_matches["actual_outcome_probability"].where(
+            ~all_matches["is_pending"],
+            all_matches[["p_home_win", "p_draw", "p_away_win"]].max(axis=1),
+        )
+        
         # Create display table with all columns
         all_matches_display = all_matches[[
             "match_number", "group_name", "home_team", "away_team",
@@ -607,7 +614,7 @@ def page_model_performance(client):
             "pred_score", "actual_score",
             "pred_goals_1h", "actual_goals_1h",
             "pred_goals_2h", "actual_goals_2h",
-            "prediction_accurate", "actual_outcome_probability"
+            "prediction_accurate", "confidence"
         ]].copy()
         
         all_matches_display.columns = [
@@ -637,7 +644,7 @@ def page_model_performance(client):
         
         # Blank out actual-only columns for pending matches (not yet played)
         pending_mask = all_matches["is_pending"].values
-        for col in ["Actual Score", "Actual 1H", "Actual 2H", "Result", "Confidence %"]:
+        for col in ["Actual Score", "Actual 1H", "Actual 2H", "Result"]:
             all_matches_display[col] = all_matches_display[col].astype(object)
             all_matches_display.loc[pending_mask, col] = "—"
         
