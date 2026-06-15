@@ -526,8 +526,9 @@ def page_model_performance(client):
     st.divider()
     st.subheader("Match Prediction Accuracy")
     
-    # Filter to completed matches only
-    completed = match_comp_df[match_comp_df["prediction_accurate"].notna()].copy()
+    # Filter to completed matches only (exclude pending)
+    completed = match_comp_df[(match_comp_df["prediction_accurate"].notna()) & 
+                               (match_comp_df["prediction_accurate"] != "pending")].copy()
     
     if len(completed) > 0:
         col1, col2, col3, col4 = st.columns(4)
@@ -627,8 +628,9 @@ def page_model_performance(client):
         all_matches_display["Confidence"] = (all_matches_display["Confidence"] * 100).round(1).astype(str) + "%"
         
         # Round goal columns
-        for col in ["Pred 1H Goals", "Pred 2H Goals"]:
-            all_matches_display[col] = all_matches_display[col].round(1)
+        for col in ["Pred 1H Goals", "Pred 2H Goals", "Actual 1H Goals", "Actual 2H Goals"]:
+            if col in all_matches_display.columns:
+                all_matches_display[col] = all_matches_display[col].astype(float).round(1)
         
         st.dataframe(all_matches_display, use_container_width=True, hide_index=True, height=600)
         
