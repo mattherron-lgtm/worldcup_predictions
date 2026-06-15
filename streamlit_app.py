@@ -177,15 +177,16 @@ def load_component_predictions(_client):
     """Load component-level predictions for all matches."""
     return run_query(_client, f"""
         SELECT
-            match_number, group_name, home_team, away_team,
-            poisson_p_home_win, poisson_p_draw, poisson_p_away_win, poisson_predicted_result,
-            bqml_p_home_win, bqml_p_draw, bqml_p_away_win, bqml_predicted_result,
-            odds_p_home_win, odds_p_draw, odds_p_away_win,
-            ensemble_p_home_win, ensemble_p_draw, ensemble_p_away_win,
-            actual_result, home_goals, away_goals
-        FROM {tbl('pred_group_stage_combined')}
-        WHERE match_number <= 8
-        ORDER BY match_number
+            mvp.match_number, mvp.group_name, mvp.home_team, mvp.away_team,
+            psg.poisson_p_home_win, psg.poisson_p_draw, psg.poisson_p_away_win, psg.poisson_predicted_result,
+            psg.bqml_p_home_win, psg.bqml_p_draw, psg.bqml_p_away_win, psg.bqml_predicted_result,
+            psg.odds_p_home_win, psg.odds_p_draw, psg.odds_p_away_win,
+            psg.p_home_win, psg.p_draw, psg.p_away_win, psg.ensemble_predicted_result,
+            mvp.actual_result, mvp.home_goals, mvp.away_goals
+        FROM {tbl('mart_match_predictions_vs_actual')} mvp
+        LEFT JOIN {tbl('pred_group_stage_combined')} psg ON mvp.fixture_id = psg.fixture_id
+        WHERE mvp.match_number <= 8
+        ORDER BY mvp.match_number
     """)
 
 
@@ -636,68 +637,93 @@ def page_model_performance(client):
         st.markdown("**Component Accuracy Deep-Dive**")
         st.caption("How each model component performed on completed matches")
         
-        with st.spinner("Loading component predictions…"):
-            components_df = load_component_predictions(client)
-        
-        # Only analyze completed matches (those with actual_result)
-        completed_components = components_df[components_df["actual_result"].notna()].copy()
-        
-        if len(completed_components) > 0:
-            # Helper function to get predicted result
-            def get_predicted_result(p_home, p_draw, p_away):
-                if pd.isna(p_home) or pd.isna(p_draw) or pd.isna(p_away):
-                    return "No prediction"
-                max_prob = max(p_home, p_draw, p_away)
-                if max_prob == p_home:
-                    return "Home Win"
-                elif max_prob == p_draw:
-                    return "Draw"
-                else:
-                    return "Away Win"
+        try:
+            with st.spinner("Loading component predictions…"):
+                components_df = load_component_predictions(client)
             
-            # Calculate component accuracy
-            components_df["poisson_correct"] = components_df["poisson_predicted_result"] == components_df["actual_result"]
-            components_df["bqml_correct"] = components_df["bqml_predicted_result"] == components_df["actual_result"]
+            # Only analyze completed matches (those with actual_result)
+            completed_components = components_df[components_df["actual_result"].notna()].copy()
             
-            # For odds, compute result from probabilities if available
-            components_df["odds_predicted_result"] = components_df.apply(
-                lambda row: get_predicted_result(row["odds_p_home_win"], row["odds_p_draw"], row["odds_p_away_win"]),
-                axis=1
-            )
-            components_df["odds_correct"] = (components_df["odds_predicted_result"] == components_df["actual_result"]) & (components_df["odds_predicted_result"] != "No prediction")
-            
-            # Summary metrics
-            col1, col2, col3, col4 = st.columns(4)
-            
-            poisson_acc = components_df["poisson_correct"].sum() / len(components_df) * 100
-            bqml_acc = components_df["bqml_correct"].sum() / len(components_df) * 100
-            odds_acc = components_df["odds_correct"].sum() / components_df["odds_correct"].notna().sum() * 100 if components_df["odds_correct"].notna().sum() > 0 else 0
-            
-            with col1:
-                st.metric("Poisson Accuracy", f"{poisson_acc:.0f}%")
-            with col2:
-                st.metric("BQML Accuracy", f"{bqml_acc:.0f}%")
-            with col3:
-                st.metric("Odds Accuracy", f"{odds_acc:.0f}%")
-            with col4:
-                ensemble_acc = (completed_components["prediction_accurate"] == "correct").sum() / len(completed_components) * 100
-                st.metric("Ensemble Accuracy", f"{ensemble_acc:.0f}%")
-            
-            # Detailed comparison table
-            st.markdown("**Component Predictions vs Actual**")
-            component_comparison = components_df[[
-                "match_number", "home_team", "away_team",
-                "poisson_predicted_result", "bqml_predicted_result", "odds_predicted_result",
-                "actual_result", "home_goals", "away_goals"
-            ]].copy()
-            
-            component_comparison.columns = [
-                "Match", "Home", "Away",
-                "Poisson", "BQML", "Odds",
-                "Actual", "H Goals", "A Goals"
-            ]
-            
-            st.dataframe(component_comparison, use_container_width=True, hide_index=True, height=400)
+            if len(completed_components) > 0:
+                # Helper function to get predicted result from probabilities
+                def get_predicted_result(p_home, p_draw, p_away):
+                    if pd.isna(p_home) or pd.isna(p_draw) or pd.isna(p_away):
+                        return "No prediction"
+                    max_prob = max(p_home, p_draw, p_away)
+                    if max_prob == p_home:
+                        return "Home Win"
+                    elif max_prob == p_draw:
+                        return "Draw"
+                    else:
+                        return "Away Win"
+                
+                # Calculate component accuracy
+                components_df["poisson_correct"] = (
+                    (components_df["poisson_predicted_result"].notna()) & 
+                    (components_df["poisson_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                )
+                components_df["bqml_correct"] = (
+                    (components_df["bqml_predicted_result"].notna()) & 
+                    (components_df["bqml_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                )
+                
+                # For odds, compute result from probabilities if available
+                components_df["odds_predicted_result"] = components_df.apply(
+                    lambda row: get_predicted_result(row["odds_p_home_win"], row["odds_p_draw"], row["odds_p_away_win"]),
+                    axis=1
+                )
+                components_df["odds_correct"] = (
+                    (components_df["odds_predicted_result"] != "No prediction") & 
+                    (components_df["odds_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                )
+                
+                # Ensemble from ensemble_predicted_result column
+                components_df["ensemble_correct"] = (
+                    (components_df["ensemble_predicted_result"].notna()) & 
+                    (components_df["ensemble_predicted_result"].str.lower() == components_df["actual_result"].str.lower())
+                )
+                
+                # Summary metrics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                n_completed = len(completed_components)
+                poisson_acc = (completed_components["poisson_correct"].sum() / n_completed * 100) if n_completed > 0 else 0
+                bqml_acc = (completed_components["bqml_correct"].sum() / n_completed * 100) if n_completed > 0 else 0
+                odds_correct_count = completed_components["odds_correct"].sum()
+                odds_acc = (odds_correct_count / n_completed * 100) if n_completed > 0 else 0
+                ensemble_acc = (completed_components["ensemble_correct"].sum() / n_completed * 100) if n_completed > 0 else 0
+                
+                with col1:
+                    st.metric("Poisson Accuracy", f"{poisson_acc:.0f}%")
+                with col2:
+                    st.metric("BQML Accuracy", f"{bqml_acc:.0f}%")
+                with col3:
+                    st.metric("Odds Accuracy", f"{odds_acc:.0f}%")
+                with col4:
+                    st.metric("Ensemble Accuracy", f"{ensemble_acc:.0f}%")
+                
+                # Detailed comparison table
+                st.markdown("**Component Predictions vs Actual**")
+                component_comparison = completed_components[[
+                    "match_number", "home_team", "away_team",
+                    "poisson_predicted_result", "bqml_predicted_result",
+                    "actual_result", "home_goals", "away_goals"
+                ]].copy()
+                
+                component_comparison.columns = [
+                    "Match", "Home", "Away",
+                    "Poisson", "BQML",
+                    "Actual", "H Goals", "A Goals"
+                ]
+                
+                # Format the results
+                for col in ["Poisson", "BQML", "Actual"]:
+                    component_comparison[col] = component_comparison[col].str.replace("_", " ").str.title()
+                
+                st.dataframe(component_comparison, use_container_width=True, hide_index=True, height=300)
+        except Exception as e:
+            st.error(f"Error loading component analysis: {str(e)}")
+
     else:
         st.info("No match results yet. Check back once matches are played!")
 
