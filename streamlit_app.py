@@ -89,11 +89,13 @@ def load_fixtures(_client):
             home_form_pts_pct, away_form_pts_pct,
             model_agreement, prediction_confidence,
             max_outcome_prob,
-            implied_odds_home, implied_odds_draw, implied_odds_away,
-            venue, venue_city, venue_country,
+            g.implied_odds_home, g.implied_odds_draw, g.implied_odds_away,
+            c.odds_p_home_win, c.odds_p_draw, c.odds_p_away_win,
+            g.venue, g.venue_city, g.venue_country,
             kickoff_utc, kickoff_local, utc_offset_hours,
             altitude_m, avg_temp_june_c
-        FROM {tbl('mart_wc_group_predictions')}
+        FROM {tbl('mart_wc_group_predictions')} g
+        LEFT JOIN {tbl('pred_group_stage_combined')} c ON g.fixture_id = c.fixture_id
         ORDER BY match_number
     """)
 
@@ -290,6 +292,15 @@ def page_group_stage(client):
                 showlegend=False,
             )
             st.plotly_chart(fig, use_container_width=True, key=f"group_stage_{i}", config={"displayModeBar": False})
+
+            # Bookmaker odds row (shown only when odds have been fetched)
+            import pandas as pd
+            oh, od, oa = row.get("odds_p_home_win"), row.get("odds_p_draw"), row.get("odds_p_away_win")
+            if oh is not None and not (isinstance(oh, float) and pd.isna(oh)):
+                st.caption(
+                    f"📊 Bookmaker odds:  "
+                    f"{row['home_team']} {oh:.0%}  ·  Draw {od:.0%}  ·  {row['away_team']} {oa:.0%}"
+                )
 
         with col_meta:
             xg_str = f"{row['home_xg']:.2f} – {row['away_xg']:.2f}"
@@ -727,18 +738,21 @@ def page_model_performance(client):
                 component_comparison = completed_components[[
                     "match_number", "home_team", "away_team",
                     "poisson_predicted_result", "bqml_predicted_result",
+                    "odds_predicted_result",
                     "actual_result", "home_goals", "away_goals"
                 ]].copy()
                 
                 component_comparison.columns = [
                     "Match", "Home", "Away",
-                    "Poisson", "BQML",
+                    "Poisson", "BQML", "Odds (Mkt)",
                     "Actual", "H Goals", "A Goals"
                 ]
                 
                 # Format the results
                 for col in ["Poisson", "BQML", "Actual"]:
                     component_comparison[col] = component_comparison[col].str.replace("_", " ").str.title()
+                # Odds: already titled by get_predicted_result, just replace underscores
+                component_comparison["Odds (Mkt)"] = component_comparison["Odds (Mkt)"].str.replace("_", " ")
                 
                 st.dataframe(component_comparison, use_container_width=True, hide_index=True, height=300)
         except Exception as e:
