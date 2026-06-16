@@ -996,6 +996,34 @@ def page_chat(client):
                 st.error(f"Could not start Gemini session: {msg}")
             return
 
+    # ── CSV upload ──────────────────────────────────────────────────────────
+    with st.expander("📎 Upload a CSV for context", expanded=False):
+        uploaded_file = st.file_uploader(
+            "Upload any CSV (squad lists, fixture data, stats, etc.) and the agent will use it when answering.",
+            type="csv",
+            key="chat_csv_upload",
+        )
+        if uploaded_file is not None:
+            try:
+                import io
+                csv_df = pd.read_csv(io.BytesIO(uploaded_file.read()))
+                # Store a compact text representation (max 100 rows to avoid token limits)
+                csv_text = csv_df.head(100).to_string(index=False)
+                st.session_state["chat_csv_context"] = (
+                    f"USER-UPLOADED CSV — '{uploaded_file.name}' "
+                    f"({len(csv_df)} rows × {len(csv_df.columns)} columns):\n{csv_text}"
+                )
+                st.success(f"✅ Loaded **{uploaded_file.name}** — {len(csv_df)} rows, {len(csv_df.columns)} columns")
+                st.dataframe(csv_df.head(5), use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"Could not parse CSV: {e}")
+        if "chat_csv_context" in st.session_state and uploaded_file is None:
+            if st.button("🗑️ Clear uploaded CSV"):
+                del st.session_state["chat_csv_context"]
+                st.rerun()
+        elif "chat_csv_context" in st.session_state:
+            st.caption("CSV is active — the agent will reference it in responses.")
+
     # Render existing messages
     for msg in st.session_state.chat_messages:
         with st.chat_message(msg["role"]):
@@ -1027,10 +1055,18 @@ def page_chat(client):
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # Append CSV context to prompt if a file has been uploaded
+        prompt_with_context = prompt
+        if "chat_csv_context" in st.session_state:
+            prompt_with_context = (
+                f"{st.session_state['chat_csv_context']}\n\n"
+                f"Using the above CSV data alongside your existing knowledge, answer:\n{prompt}"
+            )
+
         with st.chat_message("assistant"):
             with st.spinner("Thinking…"):
                 try:
-                    response = st.session_state.chat_session.send_message(prompt)
+                    response = st.session_state.chat_session.send_message(prompt_with_context)
                     answer = response.text
                     st.markdown(answer)
                     st.session_state.chat_messages.append({"role": "assistant", "content": answer})
