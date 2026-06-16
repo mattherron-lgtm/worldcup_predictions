@@ -28,7 +28,7 @@ def main():
     # ─── Authenticate Kaggle ───
     print("📥 Downloading Kaggle dataset...")
     try:
-        path = kagglehub.dataset_download("martj42/international-football-results-from-1872-to-2017")
+        path = kagglehub.dataset_download("martj42/international-football-results-from-1872-to-2017", force_download=True)
         print(f"   ✅ Dataset downloaded to: {path}")
     except Exception as e:
         print(f"   ❌ Failed to download Kaggle dataset: {e}")
