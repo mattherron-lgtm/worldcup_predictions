@@ -180,12 +180,13 @@ def load_component_predictions(_client):
             mvp.match_number, mvp.group_name, mvp.home_team, mvp.away_team,
             psg.poisson_p_home_win, psg.poisson_p_draw, psg.poisson_p_away_win, psg.poisson_predicted_result,
             psg.bqml_p_home_win, psg.bqml_p_draw, psg.bqml_p_away_win, psg.bqml_predicted_result,
-            psg.odds_p_home_win, psg.odds_p_draw, psg.odds_p_away_win,
+            -- Use mart_odds_vs_model_accuracy for odds (captures pre-match snapshot)
+            oma.odds_p_home_win, oma.odds_p_draw, oma.odds_p_away_win,
             psg.p_home_win, psg.p_draw, psg.p_away_win, psg.ensemble_predicted_result,
             mvp.actual_result, mvp.home_goals, mvp.away_goals
         FROM {tbl('mart_match_predictions_vs_actual')} mvp
         LEFT JOIN {tbl('pred_group_stage_combined')} psg ON mvp.fixture_id = psg.fixture_id
-        WHERE mvp.match_number <= 8
+        LEFT JOIN {tbl('mart_odds_vs_model_accuracy')} oma ON mvp.fixture_id = oma.fixture_id
         ORDER BY mvp.match_number
     """)
 

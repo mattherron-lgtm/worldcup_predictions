@@ -61,3 +61,17 @@ models:
       - name: away_goals_count
         description: Goals scored by away team
 
+  - name: mart_odds_vs_model_accuracy
+    description: >
+      Head-to-head accuracy comparison between bookmaker odds and our ensemble model.
+      For each completed match, shows what the odds favoured vs what the model predicted
+      and whether each was correct. Use to answer: "Are we beating the market?"
+    columns:
+      - name: match_number
+        tests: [unique, not_null]
+      - name: model_accurate
+        description: "correct / incorrect / pending"
+      - name: odds_accurate
+        description: "correct / incorrect / no_odds / pending"
+      - name: head_to_head
+        description: "both_correct / model_only / odds_only / both_wrong / no_odds / pending"
