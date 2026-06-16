@@ -79,24 +79,24 @@ def run_query(_client, sql):
 def load_fixtures(_client):
     return run_query(_client, f"""
         SELECT
-            fixture_id, group_name, group_round, match_number,
-            home_team, away_team,
-            p_home_win, p_draw, p_away_win,
-            ensemble_predicted_result,
-            poisson_predicted_result, bqml_predicted_result,
-            home_xg, away_xg,
-            home_elo, away_elo, elo_edge_label,
-            home_form_pts_pct, away_form_pts_pct,
-            model_agreement, prediction_confidence,
-            max_outcome_prob,
+            g.fixture_id, g.group_name, g.group_round, g.match_number,
+            g.home_team, g.away_team,
+            g.p_home_win, g.p_draw, g.p_away_win,
+            g.ensemble_predicted_result,
+            g.poisson_predicted_result, g.bqml_predicted_result,
+            g.home_xg, g.away_xg,
+            g.home_elo, g.away_elo, g.elo_edge_label,
+            g.home_form_pts_pct, g.away_form_pts_pct,
+            g.model_agreement, g.prediction_confidence,
+            g.max_outcome_prob,
             g.implied_odds_home, g.implied_odds_draw, g.implied_odds_away,
             c.odds_p_home_win, c.odds_p_draw, c.odds_p_away_win,
             g.venue, g.venue_city, g.venue_country,
-            kickoff_utc, kickoff_local, utc_offset_hours,
-            altitude_m, avg_temp_june_c
+            g.kickoff_utc, g.kickoff_local, g.utc_offset_hours,
+            g.altitude_m, g.avg_temp_june_c
         FROM {tbl('mart_wc_group_predictions')} g
         LEFT JOIN {tbl('pred_group_stage_combined')} c ON g.fixture_id = c.fixture_id
-        ORDER BY match_number
+        ORDER BY g.match_number
     """)
 
 
