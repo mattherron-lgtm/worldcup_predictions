@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install kagglehub google-cloud-bigquery pandas pyarrow
+          pip install kagglehub google-cloud-bigquery pandas pyarrow requests
       
       - name: Debug - Check secrets are loaded
         env:
@@ -46,6 +46,19 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
         run: python scripts/sync_kaggle_historical_results.py
       
+      - name: Fetch bookmaker odds
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/sa_key.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json
+          if [ -z "$ODDS_API_KEY" ]; then
+            echo "⚠️  ODDS_API_KEY not set — skipping odds fetch"
+          else
+            python fetch_odds.py
+          fi
+
       - name: Install dbt and dependencies
         run: |
           pip install dbt-bigquery dbt-core
