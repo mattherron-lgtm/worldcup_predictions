@@ -696,12 +696,55 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
             else:
                 col1, col2 = st.columns([2, 5])
                 with col1:
-                    st.metric("Available Choices", len(alpha_pending))
-                    st.caption("Matches available to choose from in the active list.")
+                    st.metric("Detected Value Bets", len(alpha_pending))
+                    st.caption("Matches with identified positive mathematical expected value.")
                 
-                # Active Trades Selector Interactive Interface
+                # Render the clean overview table EXACTLY as requested (matching user screenshot)
+                display_trades = []
+                for _, row in alpha_pending.iterrows():
+                    m_num = row["match_number"]
+                    teams = f"{row['home_team']} vs {row['away_team']}"
+                    selection = row["outcome_type"]
+                    odds_val = row["best_odds"]
+                    p_model = row["model_prob"]
+                    p_mkt = row["market_prob"]
+                    edge_val = row["edge"]
+                    ev_val = row["expected_value"]
+                    
+                    # Kelly sizing based on current starting bankroll
+                    k_size_pct = row["kelly_pct"]
+                    recommended_kelly_stake = start_bankroll * k_size_pct * kelly_fraction
+                    risk_cap_amount = start_bankroll * max_stake_pct
+                    stake_final_kelly = min(recommended_kelly_stake, risk_cap_amount)
+                    
+                    # Tag categories
+                    if p_model >= 0.55:
+                        tag = "🟢 High Confidence Value"
+                    elif edge_val >= 0.08:
+                        tag = "🟡 Model Disagreement"
+                    else:
+                        tag = "⚪ Conservative Arbitrage"
+                        
+                    display_trades.append({
+                        "Match #": int(m_num),
+                        "Fixture": teams,
+                        "Selection": selection,
+                        "Market Odds": f"{odds_val:.2f}",
+                        "Model Prob": f"{p_model:.1%}",
+                        "Implied Prob": f"{p_mkt:.1%}",
+                        "Alpha Edge": f"{edge_val:+.1%}",
+                        "Expected EV": f"{ev_val:+.1%}",
+                        "Flat Stake (£2.00)": f"£{2.00:.2f}",
+                        "Kelly Stake": f"£{stake_final_kelly:.2f}",
+                        "Risk Tag": tag
+                    })
+                
+                st.dataframe(pd.DataFrame(display_trades), use_container_width=True, hide_index=True)
+                
+                # Active Trades Selector Interactive Panel
+                st.divider()
                 st.markdown("### 📝 Trade Slip Selector")
-                st.caption("Set custom stakes and click **Book 🚀** on any prediction below to add them to your active tracker.")
+                st.caption("Select any prospective match from the dropdown below, customize your stake, and click **Book Selection 🚀** to record it in BigQuery.")
                 
                 user_placed_df = load_user_placed_bets(client)
                 placed = set()
@@ -709,53 +752,61 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                     for _, r in user_placed_df.iterrows():
                         placed.add((int(r["match_number"]), str(r["selection"])))
 
-                # Form to handle direct interactive table modifications
-                cols = st.columns([1, 2, 1, 1, 1, 1, 1])
-                cols[0].markdown("**Match**")
-                cols[1].markdown("**Fixture**")
-                cols[2].markdown("**Selection**")
-                cols[3].markdown("**Best Odds**")
-                cols[4].markdown("**Advised Stake**")
-                cols[5].markdown("**Status**")
-                cols[6].markdown("**Action**")
-
-                idx = 0
+                # Create selectable options of upcoming trades
+                pending_options = []
+                pending_data_mapping = {}
                 for _, row in alpha_pending.iterrows():
                     m_num = int(row["match_number"])
                     teams = f"{row['home_team']} vs {row['away_team']}"
                     selection = str(row["outcome_type"])
                     odds_val = float(row["best_odds"])
-                    
-                    # Size recommendations
                     k_size_pct = row["kelly_pct"]
                     recommended_stake = min(start_bankroll * k_size_pct * kelly_fraction, start_bankroll * max_stake_pct)
-                    recommended_stake = max(1.00, round(recommended_stake, 2)) # Ensure reasonable floor
+                    recommended_stake = max(1.00, round(recommended_stake, 2))
                     
                     is_booked = (m_num, selection) in placed
+                    prefix = "🟢 [Booked] " if is_booked else "⚪ [Unbooked] "
                     
-                    # Columns render
-                    c0, c1, c2, c3, c4, c5, c6 = st.columns([1, 2, 1, 1, 1, 1, 1])
-                    c0.write(f"Match #{m_num}")
-                    c1.write(teams)
-                    c2.write(selection)
-                    c3.write(f"**{odds_val:.2f}**")
+                    opt_label = f"{prefix}Match #{m_num}: {teams} ({selection}) @ {odds_val:.2f}"
+                    pending_options.append(opt_label)
+                    pending_data_mapping[opt_label] = {
+                        "match_number": m_num,
+                        "teams": teams,
+                        "selection": selection,
+                        "odds": odds_val,
+                        "recommended_stake": recommended_stake,
+                        "is_booked": is_booked
+                    }
+                
+                if pending_options:
+                    col_sel, col_stake, col_btn = st.columns([4, 2, 2])
+                    with col_sel:
+                        selected_opt = st.selectbox("Select Match Choice:", options=pending_options, index=0, key="trade_selectbox")
                     
-                    # Stake modification input
-                    stake_custom = c4.number_input("Stake (£)", min_value=0.50, max_value=start_bankroll, value=recommended_stake, step=0.50, key=f"stake_{m_num}_{idx}")
+                    choice = pending_data_mapping[selected_opt]
                     
-                    if is_booked:
-                        c5.write("🟢 **Active Trade**")
-                        if c6.button("Delete ❌", key=f"del_{m_num}_{idx}", use_container_width=True):
-                            delete_user_placed_bet(client, m_num, selection)
-                            st.toast(f"Removed bet for Match #{m_num}!")
-                            st.rerun()
-                    else:
-                        c5.write("⚪ Unbooked")
-                        if c6.button("Book 🚀", key=f"book_{m_num}_{idx}", use_container_width=True):
-                            save_user_placed_bet(client, m_num, selection, odds_val, stake_custom)
-                            st.toast(f"✅ Placed £{stake_custom:.2f} wager on {teams} ({selection})!")
-                            st.rerun()
-                    idx += 1
+                    with col_stake:
+                        custom_stake = st.number_input(
+                            f"Stake (£) (Rec: £{choice['recommended_stake']:.2f})",
+                            min_value=0.50,
+                            max_value=float(start_bankroll),
+                            value=choice["recommended_stake"],
+                            step=0.50,
+                            key="trade_stake_input"
+                        )
+                        
+                    with col_btn:
+                        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) # align button vertically
+                        if choice["is_booked"]:
+                            if st.button("Delete/Unbook ❌", use_container_width=True, key="trade_action_btn"):
+                                delete_user_placed_bet(client, choice["match_number"], choice["selection"])
+                                st.toast(f"Removed Match #{choice['match_number']} ({choice['selection']}) wager!")
+                                st.rerun()
+                        else:
+                            if st.button("Book Selection 🚀", use_container_width=True, key="trade_action_btn"):
+                                save_user_placed_bet(client, choice["match_number"], choice["selection"], choice["odds"], custom_stake)
+                                st.toast(f"✅ Placed £{custom_stake:.2f} wager on Match #{choice['match_number']} {choice['selection']}!")
+                                st.rerun()
                 
                 st.divider()
                 st.subheader("💼 My Booked Trades Ledger")
@@ -764,7 +815,7 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                 # Fetch fresh ledger values
                 fresh_user_df = load_user_placed_bets(client)
                 if len(fresh_user_df) == 0:
-                    st.info("No wagers currently booked in your tracker. Use the selector above to find opportunities and click 'Book 🚀'!")
+                    st.info("No wagers currently booked in your tracker. Use the selector above to find opportunities and click 'Book Selection 🚀'!")
                 else:
                     booked_list = []
                     for _, r in fresh_user_df.iterrows():
@@ -808,7 +859,7 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                     
                     booked_tbl_df = pd.DataFrame(booked_list).sort_values("Match #")
                     st.dataframe(booked_tbl_df, use_container_width=True, hide_index=True)
-                    st.caption("💡 To delete or modify any bet above, simply use the 'Delete ❌' button on that specific match row in the Trade Slip Selector.")
+                    st.caption("💡 To delete or modify any bet above, simply select it in the **Trade Slip Selector** dropdown above and click **Delete/Unbook ❌**.")
                 
                 st.divider()
                 st.success("✅ **Quantitative Arbitrage Advisory**: Prioritize **Singles** on matches tagged with **High Confidence Value** or **Model Disagreement**. Avoid compounding multiple selections into parlays, as that multiplies the bookmaker margin.")
