@@ -202,6 +202,12 @@ def load_bankroll_data(_client):
             mvp.match_number, mvp.group_name, mvp.home_team, mvp.away_team,
             -- Model probabilities
             psg.p_home_win, psg.p_draw, psg.p_away_win, psg.ensemble_predicted_result,
+            -- Advanced Fatigue-adjusted probabilities
+            psg.p_home_win_fatigue_adj, psg.p_draw_fatigue_adj, psg.p_away_win_fatigue_adj, psg.fatigue_adj_predicted_result,
+            -- Travel and rest metrics
+            psg.home_rest_days, psg.away_rest_days, psg.rest_mismatch_days,
+            psg.home_travel_distance_km, psg.away_travel_distance_km, psg.travel_advantage_km_diff,
+            psg.home_altitude_change_m, psg.away_altitude_change_m, psg.altitude_acclimation_advantage_m_diff,
             -- Actual results
             mvp.home_goals, mvp.away_goals, mvp.actual_result,
             -- Bookmaker actual best decimal odds
@@ -535,6 +541,15 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
         step=10.0,
         key="br_start_br"
     )
+    model_basis = st.sidebar.selectbox(
+        "🧠 Model Forecast Basis",
+        ["🧬 Standard Ensemble Model", "🏔️ Fatigue & Travel-Adjusted Model"],
+        index=0,
+        help="Standard Ensemble blends Poisson, BQML & Odds. Fatigue-Adjusted applies physical penalties for rest differentials, altitude changes, and trans-continental flight distances.",
+        key="br_model_basis"
+    )
+    use_fatigue_adj = (model_basis == "🏔️ Fatigue & Travel-Adjusted Model")
+
     alpha_target = st.sidebar.slider(
         "Alpha Edge Target (Min Edge %)", 
         min_value=1.0, 
@@ -585,7 +600,7 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
         actual = row['actual_result']
         is_completed = pd.notna(row['home_goals']) and pd.notna(row['away_goals'])
         
-        # Best decimal market odds (with fallback to implied probability odds)
+        -- Best decimal market odds (with fallback to implied probability odds)
         bo_h = row['best_odds_home']
         bo_d = row['best_odds_draw']
         bo_a = row['best_odds_away']
@@ -599,7 +614,7 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
             bo_a = round(1.0 / row['odds_p_away_win'], 2)
             
         if pd.isna(bo_h) or pd.isna(bo_d) or pd.isna(bo_a):
-            continue  # Needs bookmaker odds data to evaluate EV
+            continue  -- Needs bookmaker odds data to evaluate EV
             
         # Implied probabilities from bookmakers
         ip_h = row['odds_p_home_win'] if pd.notna(row['odds_p_home_win']) else 1.0 / bo_h
@@ -607,9 +622,14 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
         ip_a = row['odds_p_away_win'] if pd.notna(row['odds_p_away_win']) else 1.0 / bo_a
         
         # Model probabilities
-        mp_h = row['p_home_win']
-        mp_d = row['p_draw']
-        mp_a = row['p_away_win']
+        if use_fatigue_adj:
+            mp_h = row['p_home_win_fatigue_adj'] if pd.notna(row['p_home_win_fatigue_adj']) else row['p_home_win']
+            mp_d = row['p_draw_fatigue_adj'] if pd.notna(row['p_draw_fatigue_adj']) else row['p_draw']
+            mp_a = row['p_away_win_fatigue_adj'] if pd.notna(row['p_away_win_fatigue_adj']) else row['p_away']
+        else:
+            mp_h = row['p_home_win']
+            mp_d = row['p_draw']
+            mp_a = row['p_away_win']
         
         # Calculate Model Edge
         edge_h = mp_h - ip_h
@@ -647,7 +667,16 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                 "expected_value": ev,
                 "kelly_pct": max(0.0, k_pct),
                 "is_completed": is_completed,
-                "actual_result": actual
+                "actual_result": actual,
+                "home_rest": row.get('home_rest_days', 7.0),
+                "away_rest": row.get('away_rest_days', 7.0),
+                "rest_diff": row.get('rest_mismatch_days', 0.0),
+                "home_travel": row.get('home_travel_distance_km', 0.0),
+                "away_travel": row.get('away_travel_distance_km', 0.0),
+                "travel_diff": row.get('travel_advantage_km_diff', 0.0),
+                "home_alt": row.get('home_altitude_change_m', 0.0),
+                "away_alt": row.get('away_altitude_change_m', 0.0),
+                "alt_diff": row.get('altitude_acclimation_advantage_m_diff', 0.0)
             })
 
     if len(all_outcomes) == 0:
@@ -775,7 +804,16 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                         "selection": selection,
                         "odds": odds_val,
                         "recommended_stake": recommended_stake,
-                        "is_booked": is_booked
+                        "is_booked": is_booked,
+                        "home_rest": row["home_rest"],
+                        "away_rest": row["away_rest"],
+                        "rest_diff": row["rest_diff"],
+                        "home_travel": row["home_travel"],
+                        "away_travel": row["away_travel"],
+                        "travel_diff": row["travel_diff"],
+                        "home_alt": row["home_alt"],
+                        "away_alt": row["away_alt"],
+                        "alt_diff": row["alt_diff"]
                     }
                 
                 if pending_options:
@@ -784,6 +822,14 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                         selected_opt = st.selectbox("Select Match Choice:", options=pending_options, index=0, key="trade_selectbox")
                     
                     choice = pending_data_mapping[selected_opt]
+                    
+                    # Display physical fatigue diagnostic card nicely as requested
+                    st.caption(
+                        f"🏃 **Physical Fatigue Diagnostics (Match #{choice['match_number']})**: "
+                        f"Rest: {choice['home_rest']:.1f}d (H) vs {choice['away_rest']:.1f}d (A) (Delta: {choice['rest_diff']:+.1f}d) | "
+                        f"Travel: {int(choice['home_travel'])}km (H) vs {int(choice['away_travel'])}km (A) | "
+                        f"Altitude: {int(choice['home_alt'])}m (H) vs {int(choice['away_alt'])}m (A)"
+                    )
                     
                     with col_stake:
                         custom_stake = st.number_input(
