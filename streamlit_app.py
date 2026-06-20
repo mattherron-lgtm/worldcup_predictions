@@ -600,7 +600,7 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
         actual = row['actual_result']
         is_completed = pd.notna(row['home_goals']) and pd.notna(row['away_goals'])
         
-        -- Best decimal market odds (with fallback to implied probability odds)
+        # Best decimal market odds (with fallback to implied probability odds)
         bo_h = row['best_odds_home']
         bo_d = row['best_odds_draw']
         bo_a = row['best_odds_away']
@@ -614,7 +614,7 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
             bo_a = round(1.0 / row['odds_p_away_win'], 2)
             
         if pd.isna(bo_h) or pd.isna(bo_d) or pd.isna(bo_a):
-            continue  -- Needs bookmaker odds data to evaluate EV
+            continue  # Needs bookmaker odds data to evaluate EV
             
         # Implied probabilities from bookmakers
         ip_h = row['odds_p_home_win'] if pd.notna(row['odds_p_home_win']) else 1.0 / bo_h
