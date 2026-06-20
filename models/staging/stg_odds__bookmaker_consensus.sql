@@ -1,52 +1,29 @@
 -- =============================================================
--- Staging model for bookmaker odds fetched via fetch_odds.py.
+-- Staging model referencing local static/historic dbt seeds 
+-- uploaded via seeds/wc_2026_consensus_odds.csv
+--
 -- Normalises team names to match historical results naming convention,
 -- and provides a "market consensus" probability for each match outcome.
---
--- Falls back gracefully: if no odds exist for a fixture, downstream
--- models use NULL and the ensemble ignores the odds signal.
--- If the odds_bookmaker table doesn't exist yet (no API key configured),
--- this model returns zero rows so the ensemble falls back to BQML + Poisson.
 -- =============================================================
 
-{% set odds_table = 'analytics-project-production.ML_WC_2026.odds_bookmaker' %}
-
 with raw as (
-    {% if execute %}
-        {% set table_exists_query %}
-            select count(*) as cnt
-            from `analytics-project-production.ML_WC_2026.INFORMATION_SCHEMA.TABLES`
-            where table_name = 'odds_bookmaker'
-        {% endset %}
-        {% set results = run_query(table_exists_query) %}
-        {% set table_exists = results.columns[0].values()[0] > 0 %}
-    {% else %}
-        {% set table_exists = false %}
-    {% endif %}
-
-    {% if table_exists %}
-    select * from `{{ odds_table }}`
-    {% else %}
-    -- Odds table not yet populated — return empty schema
     select
-        cast(null as string)    as match_id,
-        cast(null as timestamp) as kickoff_utc,
-        cast(null as string)    as home_team,
-        cast(null as string)    as away_team,
-        cast(null as int64)     as bookmaker_count,
-        cast(null as float64)   as implied_p_home,
-        cast(null as float64)   as implied_p_draw,
-        cast(null as float64)   as implied_p_away,
-        cast(null as float64)   as best_odds_home,
-        cast(null as float64)   as best_odds_draw,
-        cast(null as float64)   as best_odds_away,
-        cast(null as timestamp) as fetched_at
-    from (select 1) _empty
-    where 1 = 0
-    {% endif %}
+        match_id,
+        cast(kickoff_utc as timestamp) as kickoff_utc,
+        home_team,
+        away_team,
+        cast(bookmaker_count as int64) as bookmaker_count,
+        cast(implied_p_home as float64) as implied_p_home,
+        cast(implied_p_draw as float64) as implied_p_draw,
+        cast(implied_p_away as float64) as implied_p_away,
+        cast(best_odds_home as float64) as best_odds_home,
+        cast(best_odds_draw as float64) as best_odds_draw,
+        cast(best_odds_away as float64) as best_odds_away,
+        cast(fetched_at as timestamp) as fetched_at
+    from {{ ref('wc_2026_consensus_odds') }}
 ),
 
--- Team name normalisation (Odds API uses FIFA names, we use historical names)
+-- Team name normalisation (Odds data sources use FIFA names, we use historical names)
 normalised as (
     select
         match_id,

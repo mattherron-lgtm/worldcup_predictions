@@ -90,6 +90,7 @@ def load_fixtures(_client):
             g.model_agreement, g.prediction_confidence,
             g.max_outcome_prob,
             g.implied_odds_home, g.implied_odds_draw, g.implied_odds_away,
+            g.best_odds_home, g.best_odds_draw, g.best_odds_away,
             c.odds_p_home_win, c.odds_p_draw, c.odds_p_away_win,
             g.venue, g.venue_city, g.venue_country,
             g.kickoff_utc, g.kickoff_local, g.utc_offset_hours,
@@ -193,6 +194,26 @@ def load_component_predictions(_client):
     """)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_bankroll_data(_client):
+    """Load unified match results, ensemble predictions and bookmaker odds for bankroll tracking."""
+    return run_query(_client, f"""
+        SELECT
+            mvp.match_number, mvp.group_name, mvp.home_team, mvp.away_team,
+            -- Model probabilities
+            psg.p_home_win, psg.p_draw, psg.p_away_win, psg.ensemble_predicted_result,
+            -- Actual results
+            mvp.home_goals, mvp.away_goals, mvp.actual_result,
+            -- Bookmaker actual best decimal odds
+            psg.best_odds_home, psg.best_odds_draw, psg.best_odds_away,
+            -- Bookmaker consensus implied probabilities
+            psg.odds_p_home_win, psg.odds_p_draw, psg.odds_p_away_win
+        FROM {tbl('mart_match_predictions_vs_actual')} mvp
+        LEFT JOIN {tbl('pred_group_stage_combined')} psg ON mvp.fixture_id = psg.fixture_id
+        ORDER BY mvp.match_number
+    """)
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def render_sidebar():
@@ -206,6 +227,7 @@ def render_sidebar():
                 "🗓️  Group Stage",
                 "📊  Group Standings",
                 "📈  Model Performance",
+                "💰  Bankroll Manager",
                 "🏆  Tournament Winner",
                 "🤖  Match Previews",
                 "💬  Chat Agent",
@@ -429,6 +451,493 @@ def page_standings(client):
             )
             with col:
                 st.plotly_chart(fig, use_container_width=True, key=f"standings_{group}", config={"displayModeBar": False})
+
+
+# ── Page: Bankroll Manager ───────────────────────────────────────────────────
+
+def page_bankroll_manager(client):
+    st.header("💰 Bankroll & EV Optimizer")
+    st.caption("Apply quantitative finance and professional betting frameworks (Kelly Criterion, Stop-Loss, 2% Rule) to manage your risk.")
+
+    # 1. Framework explanation in st.info/expander
+    with st.expander("📖 Read the Professional Risk Management Framework", expanded=False):
+        st.markdown("""
+### The Professional Betting Framework
+
+To succeed as a data-driven sports analyst, you must transition from **betting on outcomes** to **managing expected value (EV)**. Losing individual bets—like a shock España draw—is statistically inevitable. Your objective is to maximize the frequency of positive EV decisions, allowing the law of large numbers to compound your bankroll over the tournament's 72 matches.
+
+#### 1. The Kelly Criterion (Unit Sizing)
+We use a **fractional Kelly Criterion** to dynamically size bets based on the model's exact "edge". 
+$$\\text{Kelly } f^* = \\frac{P_{\\text{model}} \\times O_{\\text{bookmaker}} - 1}{O_{\\text{bookmaker}} - 1}$$
+Where $P_{\\text{model}}$ is our ensemble probability, and $O_{\\text{bookmaker}}$ is the best decimal market odds.
+* A fractional multiplier (e.g., **0.25 standard**) reduces variance.
+* We cap any single bet at a maximum of **2-3% of the current bankroll** to eliminate risk of ruin.
+
+#### 2. Model Disagreement ("Alpha Zones")
+We only commit capital when there is a significant discrepancy between our model and bookmaker consensus:
+$$\\text{Edge} = P_{\\text{model}} - P_{\\text{bookmaker}} \\ge 5\\% \\text{ to } 7\\%$$
+Where market implied probability $P_{\\text{bookmaker}} = 1 / O_{\\text{bookmaker}}$. Matches where our model agrees with bookmakers offer no "Alpha" and are strictly avoided.
+
+#### 3. Strict Stop-Loss Rules
+To survive a high-variance "cold run", we implement an automated stop-loss:
+* If the bankroll dips by **10%** from the starting value, flat stakes are reduced to **£1.50** (from £2.00) and Kelly sizing is scaled down by 50%.
+* Once the bankroll recovers to the baseline, normal stakes are automatically restored. This preserves capital during negative feedback loops.
+        """)
+
+    with st.spinner("Loading predictions & market odds..."):
+        df = load_bankroll_data(client)
+
+    if len(df) == 0:
+        st.warning("⚠️ No predictions or odds data available. Make sure BigQuery tables are set up and `fetch_odds.py` has been executed.")
+        return
+
+    # ── Sidebar Settings for Risk Control ──
+    st.sidebar.markdown("### ⚙️ Bankroll Settings")
+    start_bankroll = st.sidebar.number_input(
+        "Starting Bankroll (£)", 
+        min_value=10.0, 
+        max_value=10000.0, 
+        value=100.0, 
+        step=10.0,
+        key="br_start_br"
+    )
+    alpha_target = st.sidebar.slider(
+        "Alpha Edge Target (Min Edge %)", 
+        min_value=1.0, 
+        max_value=20.0, 
+        value=5.0, 
+        step=0.5,
+        key="br_min_edge"
+    ) / 100.0
+    kelly_fraction = st.sidebar.selectbox(
+        "Fractional Kelly Multiplier", 
+        [0.10, 0.20, 0.25, 0.50, 1.00], 
+        index=2, 
+        help="0.25 (Quarter-Kelly) is the industry standard for conservative compounding.",
+        key="br_kelly"
+    )
+    max_stake_pct = st.sidebar.slider(
+        "Single Match Risk Cap (% Bankroll)", 
+        min_value=0.5, 
+        max_value=5.0, 
+        value=2.0, 
+        step=0.5,
+        key="br_risk_cap"
+    ) / 100.0
+    stop_loss_trigger_pct = st.sidebar.slider(
+        "Stop-Loss Threshold (% Drawdown)", 
+        min_value=5, 
+        max_value=30, 
+        value=10, 
+        step=1,
+        key="br_sl_trig"
+    ) / 100.0
+    stop_loss_reduced_bet = st.sidebar.number_input(
+        "Stop-Loss Flat Bet (£)", 
+        min_value=0.5, 
+        max_value=10.0, 
+        value=1.50, 
+        step=0.10,
+        key="br_sl_bet"
+    )
+
+    # Process all outcomes (Home, Draw, Away) for each match
+    all_outcomes = []
+    for _, row in df.iterrows():
+        match_num = int(row['match_number'])
+        home = row['home_team']
+        away = row['away_team']
+        gp = row['group_name']
+        actual = row['actual_result']
+        is_completed = pd.notna(row['home_goals']) and pd.notna(row['away_goals'])
+        
+        # Best decimal market odds (with fallback to implied probability odds)
+        bo_h = row['best_odds_home']
+        bo_d = row['best_odds_draw']
+        bo_a = row['best_odds_away']
+        
+        # Fallback to bookmaker consensus probabilities if decimal odds missing
+        if pd.isna(bo_h) and pd.notna(row['odds_p_home_win']) and row['odds_p_home_win'] > 0:
+            bo_h = round(1.0 / row['odds_p_home_win'], 2)
+        if pd.isna(bo_d) and pd.notna(row['odds_p_draw']) and row['odds_p_draw'] > 0:
+            bo_d = round(1.0 / row['odds_p_draw'], 2)
+        if pd.isna(bo_a) and pd.notna(row['odds_p_away_win']) and row['odds_p_away_win'] > 0:
+            bo_a = round(1.0 / row['odds_p_away_win'], 2)
+            
+        if pd.isna(bo_h) or pd.isna(bo_d) or pd.isna(bo_a):
+            continue  # Needs bookmaker odds data to evaluate EV
+            
+        # Implied probabilities from bookmakers
+        ip_h = row['odds_p_home_win'] if pd.notna(row['odds_p_home_win']) else 1.0 / bo_h
+        ip_d = row['odds_p_draw'] if pd.notna(row['odds_p_draw']) else 1.0 / bo_d
+        ip_a = row['odds_p_away_win'] if pd.notna(row['odds_p_away_win']) else 1.0 / bo_a
+        
+        # Model probabilities
+        mp_h = row['p_home_win']
+        mp_d = row['p_draw']
+        mp_a = row['p_away_win']
+        
+        # Calculate Model Edge
+        edge_h = mp_h - ip_h
+        edge_d = mp_d - ip_d
+        edge_a = mp_a - ip_a
+        
+        # Calculate Expected Value per units staked: EV = p * o - 1
+        ev_h = mp_h * bo_h - 1.0
+        ev_d = mp_d * bo_d - 1.0
+        ev_a = mp_a * bo_a - 1.0
+        
+        mapping = [
+            ("Home Win", mp_h, ip_h, bo_h, edge_h, ev_h, "home_win"),
+            ("Draw", mp_d, ip_d, bo_d, edge_d, ev_d, "draw"),
+            ("Away Win", mp_a, ip_a, bo_a, edge_a, ev_a, "away_win")
+        ]
+        
+        for p_lbl, p_mod, p_mkt, odds_val, edge, ev, outcome_lbl in mapping:
+            # Kelly: (p * o - 1) / (o - 1)
+            k_pct = 0.0
+            if odds_val > 1.0:
+                k_pct = (p_mod * odds_val - 1.0) / (odds_val - 1.0)
+            
+            all_outcomes.append({
+                "match_number": match_num,
+                "group_name": gp,
+                "home_team": home,
+                "away_team": away,
+                "outcome_type": p_lbl,
+                "outcome_label": outcome_lbl,
+                "model_prob": p_mod,
+                "market_prob": p_mkt,
+                "best_odds": odds_val,
+                "edge": edge,
+                "expected_value": ev,
+                "kelly_pct": max(0.0, k_pct),
+                "is_completed": is_completed,
+                "actual_result": actual
+            })
+
+    if len(all_outcomes) == 0:
+        st.warning("⚠️ No matches with valid bookmaker odds loaded. Verify that your database is populated with bookmaker odds.")
+        return
+
+    out_df = pd.DataFrame(all_outcomes)
+
+    # Tabs for the user interface
+    tab_active, tab_backtest, tab_calc = st.tabs([
+        "⏱️ Active Alpha Opportunities", 
+        "📊 Portfolio Backtest & Stop-Loss Diagnostic", 
+        "🧮 Interactive EV & Kelly Calculator"
+    ])
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # TAB 1: ACTIVE ALPHA OPPORTUNITIES (Upcoming Matches)
+    # ──────────────────────────────────────────────────────────────────────────
+    with tab_active:
+        st.subheader("Current High-Edge Trades")
+        st.caption("Matches that are pending where our model probability exceeds the bookmaker implied probability by at least your Alpha Edge Target.")
+
+        pending_df = out_df[out_df["is_completed"] == False].copy()
+        
+        if len(pending_df) == 0:
+            st.info("No upcoming matches found or all remaining matches are already completed!")
+        else:
+            # Filter to active alpha opportunities
+            alpha_pending = pending_df[pending_df["edge"] >= alpha_target].copy()
+            
+            # Sort by highest expected value
+            alpha_pending = alpha_pending.sort_values("expected_value", ascending=False)
+            
+            if len(alpha_pending) == 0:
+                st.caption(f"No upcoming outcomes of impending matches meet your raw {alpha_target:.1%} Alpha Target edge.")
+                st.info("💡 Try lowering the 'Alpha Edge Target' slider in the sidebar to discover borderline value plays.")
+            else:
+                col1, col2 = st.columns([2, 5])
+                with col1:
+                    st.metric("Detected Value Bets", len(alpha_pending))
+                    st.caption("Matches with identified positive mathematical expected value.")
+                
+                # Format a table for users
+                display_trades = []
+                for _, row in alpha_pending.iterrows():
+                    m_num = row["match_number"]
+                    teams = f"{row['home_team']} vs {row['away_team']}"
+                    selection = row["outcome_type"]
+                    odds_val = row["best_odds"]
+                    p_model = row["model_prob"]
+                    p_mkt = row["market_prob"]
+                    edge_val = row["edge"]
+                    ev_val = row["expected_value"]
+                    
+                    # Kelly sizing based on current starting bankroll
+                    k_size_pct = row["kelly_pct"]
+                    recommended_kelly_stake = start_bankroll * k_size_pct * kelly_fraction
+                    risk_cap_amount = start_bankroll * max_stake_pct
+                    stake_final_kelly = min(recommended_kelly_stake, risk_cap_amount)
+                    
+                    # Tag categories
+                    if p_model >= 0.55:
+                        tag = "🟢 High Confidence Value"
+                    elif edge_val >= 0.08:
+                        tag = "🟡 Model Disagreement"
+                    else:
+                        tag = "⚪ Conservative Arbitrage"
+                        
+                    display_trades.append({
+                        "Match #": m_num,
+                        "Fixture": teams,
+                        "Selection": selection,
+                        "Market Odds": f"{odds_val:.2f}",
+                        "Model Prob": f"{p_model:.1%}",
+                        "Implied Prob": f"{p_mkt:.1%}",
+                        "Alpha Edge": f"{edge_val:+.1%}",
+                        "Expected EV": f"{ev_val:+.1%}",
+                        "Flat Stake (£2.00)": f"£{2.00:.2f}",
+                        "Kelly Stake": f"£{stake_final_kelly:.2f}",
+                        "Risk Tag": tag
+                    })
+                
+                st.dataframe(pd.DataFrame(display_trades), use_container_width=True, hide_index=True)
+                st.success("✅ **Quantitative Arbitrage Advisory**: Prioritize **Singles** on matches tagged with **High Confidence Value** or **Model Disagreement**. Avoid compounding multiple selections into parlays, as that multiplies the bookmaker margin.")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # TAB 2: PORTFOLIO BACKTEST & DIAGNOSTIC (Completed Matches)
+    # ──────────────────────────────────────────────────────────────────────────
+    with tab_backtest:
+        st.subheader("Historical EV Strategy Backtest")
+        st.caption("See how professional bankroll rules would have performed using our model predictions and bookmaker odds historically.")
+
+        comp_df_matches = out_df[out_df["is_completed"] == True].copy()
+        
+        if len(comp_df_matches) == 0:
+            st.info("No completed matches loaded in the dataset yet. Results will compile here once group stage matches are completed.")
+        else:
+            # Select the single highest-edge alpha outcome per match to avoid multi-outcome hedging
+            best_comp_by_match = comp_df_matches.loc[comp_df_matches.groupby('match_number')['edge'].idxmax()].copy()
+            
+            # Run simulation
+            flat_history = [start_bankroll]
+            kelly_history = [start_bankroll]
+            match_labels = ["Start"]
+            
+            curr_bank_flat = start_bankroll
+            curr_bank_kelly = start_bankroll
+            
+            flat_bets_count = 0
+            flat_wins = 0
+            kelly_bets_count = 0
+            kelly_wins = 0
+            
+            total_flat_staked = 0.0
+            total_kelly_staked = 0.0
+            
+            sim_logs = []
+            
+            for _, row in best_comp_by_match.sort_values('match_number').iterrows():
+                m_num = row['match_number']
+                fixture = f"{row['home_team']} vs {row['away_team']}"
+                edge = row['edge']
+                odds_val = row['best_odds']
+                k_pct = row['kelly_pct']
+                p_model = row['model_prob']
+                outcome_lbl = row['outcome_label']
+                actual = row['actual_result']
+                is_win = (outcome_lbl == actual)
+                
+                # Only bet if the highest edge matches our alpha target
+                if edge < alpha_target:
+                    # No bet made, bankrolls stay unchanged
+                    flat_history.append(curr_bank_flat)
+                    kelly_history.append(curr_bank_kelly)
+                    match_labels.append(f"M{m_num} (Pass)")
+                    continue
+                
+                match_labels.append(f"M{m_num} ({row['home_team'] if outcome_lbl=='home_win' else row['away_team'] if outcome_lbl=='away_win' else 'Draw'})")
+                
+                # --- Flat Sizing with Stop-Loss ---
+                is_under_stop_loss_flat = curr_bank_flat <= (start_bankroll * (1.0 - stop_loss_trigger_pct))
+                flat_stake = stop_loss_reduced_bet if is_under_stop_loss_flat else 2.00 # (£2.00 standard unit)
+                flat_stake = min(flat_stake, curr_bank_flat) # can't bet more than what we have
+                
+                if flat_stake > 0:
+                    flat_bets_count += 1
+                    total_flat_staked += flat_stake
+                    if is_win:
+                        flat_net = flat_stake * (odds_val - 1.0)
+                        curr_bank_flat += flat_net
+                        flat_wins += 1
+                    else:
+                        flat_net = -flat_stake
+                        curr_bank_flat += flat_net
+                else:
+                    flat_net = 0.0
+                
+                # --- Kelly Sizing with Stop-Loss & Risk Cap ---
+                is_under_stop_loss_kelly = curr_bank_kelly <= (start_bankroll * (1.0 - stop_loss_trigger_pct))
+                active_kelly_fraction = kelly_fraction * 0.5 if is_under_stop_loss_kelly else kelly_fraction
+                
+                raw_kelly_stake = curr_bank_kelly * k_pct * active_kelly_fraction
+                risk_cap = curr_bank_kelly * max_stake_pct
+                
+                kelly_stake = min(raw_kelly_stake, risk_cap)
+                kelly_stake = max(0.0, kelly_stake)
+                kelly_stake = min(kelly_stake, curr_bank_kelly)
+                
+                if kelly_stake > 0:
+                    kelly_bets_count += 1
+                    total_kelly_staked += kelly_stake
+                    if is_win:
+                        kelly_net = kelly_stake * (odds_val - 1.0)
+                        curr_bank_kelly += kelly_net
+                        kelly_wins += 1
+                    else:
+                        kelly_net = -kelly_stake
+                        curr_bank_kelly += kelly_net
+                else:
+                    kelly_net = 0.0
+                
+                flat_history.append(curr_bank_flat)
+                kelly_history.append(curr_bank_kelly)
+                
+                sim_logs.append({
+                    "Match #": m_num,
+                    "Fixture": fixture,
+                    "Selection": row['outcome_type'],
+                    "Result": "Win ✅" if is_win else "Loss ❌",
+                    "Odds": f"{odds_val:.2f}",
+                    "Edge": f"{edge:+.1%}",
+                    "Flat Stake": f"£{flat_stake:.2f}",
+                    "Flat Net": f"£{flat_net:+.2f}",
+                    "Flat Bankroll": f"£{curr_bank_flat:.2f}",
+                    "Kelly Stake": f"£{kelly_stake:.2f}",
+                    "Kelly Net": f"£{kelly_net:+.2f}",
+                    "Kelly Bankroll": f"£{curr_bank_kelly:.2f}",
+                    "Stop-Loss Active": "⚠️ Yes" if (is_under_stop_loss_flat or is_under_stop_loss_kelly) else "No"
+                })
+
+            # Show Comparison KPI stats
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.subheader("💵 Baseline Sizing (Cash)")
+                st.metric("Final Bankroll", f"£{start_bankroll:.2f}")
+                st.caption("No bets placed. Safe, but zero growth.")
+                
+            with col2:
+                flat_profit_val = curr_bank_flat - start_bankroll
+                flat_roi_pct = (flat_profit_val / total_flat_staked * 100) if total_flat_staked > 0 else 0
+                st.subheader("📋 2% Rule Sizing (Flat)")
+                st.metric("Final Bankroll", f"£{curr_bank_flat:.2f}", f"£{flat_profit_val:+.2f} ({flat_roi_pct:+.1f}% ROI)")
+                st.caption(f"Placed {flat_bets_count} bets / Win Rate: {flat_wins/flat_bets_count if flat_bets_count>0 else 0:.1%}")
+                
+            with col3:
+                kelly_profit_val = curr_bank_kelly - start_bankroll
+                kelly_roi_pct = (kelly_profit_val / total_kelly_staked * 100) if total_kelly_staked > 0 else 0
+                st.subheader("🚀 Fractional Kelly")
+                st.metric("Final Bankroll", f"£{curr_bank_kelly:.2f}", f"£{kelly_profit_val:+.2f} ({kelly_roi_pct:+.1f}% ROI)")
+                st.caption(f"Placed {kelly_bets_count} bets / Win Rate: {kelly_wins/kelly_bets_count if kelly_bets_count>0 else 0:.1%}")
+
+            # Plot custom growth trajectory chart
+            st.write("")
+            st.subheader("📈 Bankroll Compound History")
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=match_labels,
+                y=flat_history,
+                mode="lines+markers",
+                name="Flat £2.00 Sizing (2% Rule)",
+                line=dict(color="#3498db", width=3),
+                marker=dict(size=4)
+            ))
+            fig.add_trace(go.Scatter(
+                x=match_labels,
+                y=kelly_history,
+                mode="lines+markers",
+                name=f"Fractional {kelly_fraction} Kelly",
+                line=dict(color="#2ecc71", width=3),
+                marker=dict(size=4)
+            ))
+            fig.add_trace(go.Scatter(
+                x=match_labels,
+                y=[start_bankroll] * len(match_labels),
+                mode="lines",
+                name="Hold cash baseline",
+                line=dict(color="#7f8c8d", dash="dash")
+            ))
+            fig.update_layout(
+                height=450,
+                xaxis=dict(showgrid=False, tickangle=45),
+                yaxis=dict(title="Bankroll (£)", showgrid=True, gridcolor="rgba(200,200,200,0.1)"),
+                margin=dict(l=40, r=40, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                legend=dict(orientation="h", y=1.12, yanchor="bottom")
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Tuition Diagnostic analysis
+            if curr_bank_flat < start_bankroll or curr_bank_kelly < start_bankroll:
+                st.warning("⚠️ **Diagnostic Feed-Back Loop Active (Variance Insight)**")
+                cost_of_learning_flat = abs(flat_profit_val) / flat_bets_count if flat_bets_count > 0 else 0
+                st.markdown(f"""
+Your strategy is currently enduring a negative drift. This is not a failure of logic; it is a vital checkpoint.
+* **Tuition Fee Assessment**: Your current flat learning fee is only **£{cost_of_learning_flat:.2f}** per unit bet! Chasing high-odds parlays typically runs a tuition fee of £5.00+ per bet (losing full bankrolls instantly).
+* **Adaptation Advice**: The market and model have mismatched calibratings. Tighten your minimum edge threshold on upcoming matches to **{(alpha_target + 0.02) * 100:.1f}%** or only focus bets on cases where Poisson and market odds are deeply misaligned.
+                """)
+            else:
+                st.success("🏆 **System Alpha Executing Successfully**: The combined power of Fractional Kelly and model disagreement detection has compound-expanded the starting bankroll! Continue following strict unit sizers.")
+
+            # List transaction ledger
+            st.write("")
+            st.subheader("📋 Complete Audit Ledger")
+            st.caption("Step-by-step transaction logs demonstrating risk implementation.")
+            st.dataframe(pd.DataFrame(sim_logs), use_container_width=True, hide_index=True)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # TAB 3: INTERACTIVE EV & KELLY CALCULATOR
+    # ──────────────────────────────────────────────────────────────────────────
+    with tab_calc:
+        st.subheader("🧮 Interactive Bet Calibrator")
+        st.caption("Inputs any custom upcoming match or custom parameters to dynamically calculate the Kelly Criterion sizing.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("### Match Parameters")
+            sim_m_mod = st.slider("Model Winning Probability (%)", min_value=1.0, max_value=99.0, value=55.0, step=0.5) / 100.0
+            sim_odds = st.number_input("Best Bookmakers Odds (Decimal)", min_value=1.01, max_value=50.0, value=2.10, step=0.05)
+            
+        with col2:
+            st.markdown("### Risk Limits")
+            sim_br = st.number_input("Your Bankroll (£)", min_value=1.0, max_value=100000.0, value=start_bankroll, step=10.0)
+            sim_frac = st.selectbox("Kelly Multiplier Choose", [0.10, 0.20, 0.25, 0.50, 1.00], index=2)
+            sim_max_pct = st.slider("Absolute Risk Limit (% of Bankroll)", min_value=0.5, max_value=5.0, value=2.0, step=0.5) / 100.0
+
+        # Calculations
+        sim_implied = 1.0 / sim_odds
+        sim_edge = sim_m_mod - sim_implied
+        sim_ev = sim_m_mod * sim_odds - 1.0
+        
+        sim_k_pct = (sim_m_mod * sim_odds - 1.0) / (sim_odds - 1.0) if sim_odds > 1.0 else 0.0
+        sim_k_pct = max(0.0, sim_k_pct)
+        
+        rec_stake_raw = sim_br * sim_k_pct * sim_frac
+        rec_stake_capped = min(rec_stake_raw, sim_br * sim_max_pct)
+
+        st.divider()
+        st.markdown("### Calibration Outputs")
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Bookie Implied Probability", f"{sim_implied:.1%}")
+        c2.metric("Calculated Edge", f"{sim_edge:+.1%}", help="Model Prob - Market Implied Prob")
+        c3.metric("Expected Value (EV)", f"{sim_ev:+.1%}", help="Profit/loss ratio per currency unit staked")
+        
+        k_color = "normal"
+        c4.metric("Kelly Criterion Sizing", f"{sim_k_pct:.1%}", help="Pure mathematical Kelly stake percentage (uncapped)")
+
+        if sim_ev > 0:
+            st.success(f"🟢 **Value Bet Detected**: Betting **£{rec_stake_capped:.2f}** (fractional Kelly capped at {sim_max_pct:.1%}) yields an Expected Value (EV) of **{sim_ev:+.1%}** on a positive edge of **{sim_edge:+.1%}**!")
+        else:
+            st.error("🔴 **Negative Expected Value**: Avoid! The bookie's odds do not compensate for the risk (you are paying the bookie a premium). Edge is negative.")
 
 
 # ── Page: Tournament Winner ───────────────────────────────────────────────────
@@ -975,11 +1484,15 @@ def page_chat(client):
 
     # Context baked into system instruction — no extra API call needed on init
     gemini = make_gemini_model(genai, system_instruction=(
-        "You are an expert football analyst assistant for the 2026 FIFA World Cup. "
+        "You are an expert football analyst assistant and professional quantitative risk manager for the 2026 FIFA World Cup. "
         "You have access to predictions generated by a BigQuery ML + Poisson ensemble model "
         "trained on 49,000 international matches since 1872, blended with live bookmaker odds. "
-        "Answer questions concisely and confidently. Use football terminology. "
-        "Be opinionated where the data supports it. Keep responses under 200 words unless asked for detail.\n\n"
+        "You operate under a strict quantitative finance framework:\n"
+        "1. Focus strictly on MANAGING EXPECTED VALUE (EV) and capitalizing on 'Alpha Matches' — where our model probability exceeds the bookmaker implied probability by >= 5%.\n"
+        "2. Advise the use of the Fractional Kelly Criterion (0.25 multiplier is standard) to dynamically size bets and prevent risk of ruin.\n"
+        "3. Emphasize Bankroll Preservation: advocate for SINGLE bets (avoid compounding margins via parlays), Draw No Bet or Handicaps to reduce variance, and enforce a strict 10% drawdown stop-loss (reduce stake from 2% £2.00 unit down to £1.50 if bankroll dips 10%).\n"
+        "4. Treat matches and upsets not as model failures, but as expected low-probability tails in a Poisson distribution. Emphasize ROI over 72 matches instead of short-term outcomes.\n\n"
+        "Answer questions concisely, confidently, and in professional quantitative trading terms. Use football terminologies. Keep responses under 200 words unless asked for detailed EV calculations.\n\n"
         f"CURRENT PREDICTION DATA:\n{context}"
     ))
 
@@ -1081,9 +1594,86 @@ def page_chat(client):
         st.rerun()
 
 
+# ── Authentication ────────────────────────────────────────────────────────────
+
+def check_auth():
+    """Renders a secure, stylized login screen.
+    Returns True if authenticated, False otherwise.
+    Allows easy locking by password & restrictive email domains if configured.
+    """
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.user_email = ""
+
+    if st.session_state.authenticated:
+        # Show logged-in email and a Sign Out button at the bottom of the sidebar
+        st.sidebar.caption(f"Authenticated as: {st.session_state.user_email}")
+        if st.sidebar.button("🔓 Sign Out", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.user_email = ""
+            st.rerun()
+        return True
+
+    # Render landing login card
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.write("")
+        st.write("")
+        st.markdown("<h1 style='text-align: center; font-size: 3rem; margin: 0;'>⚽</h1>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; margin: 0;'>World Cup 2026 Predictions</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #7f8c8d; margin-bottom: 2rem;'>Quantitative Model Predictions & Expected Value Dashboard</p>", unsafe_allow_html=True)
+        st.divider()
+
+        with st.form("login_form"):
+            st.markdown("### Access Authentication")
+            email = st.text_input("Email Address", placeholder="name@domain.com").strip().lower()
+            password = st.text_input("Password", type="password", placeholder="••••••••")
+            
+            submit = st.form_submit_button("Enter Predictions Portal", use_container_width=True)
+            
+            if submit:
+                # Base email check
+                if not email or "@" not in email:
+                    st.error("⚠️ Please enter a valid email address.")
+                    return False
+                
+                # Retrieve from secrets if provided, else define standard default passcode
+                auth_secrets = st.secrets.get("auth", {})
+                correct_password = auth_secrets.get("password", "worldcup2026")
+                allowed_domains = auth_secrets.get("allowed_domains", [])
+                allowed_users = auth_secrets.get("allowed_users", [])
+                
+                # Check for password accuracy
+                if password != correct_password:
+                    st.error("⚠️ Invalid credential passcode.")
+                    return False
+
+                # Email restriction checks
+                if allowed_users and email not in [u.lower() for u in allowed_users]:
+                    st.error("⚠️ This email address is not authorized.")
+                    return False
+                
+                if allowed_domains:
+                    domain = email.split("@")[-1]
+                    if domain not in [d.lower() for d in allowed_domains]:
+                        st.error("⚠️ Access is restricted to authorized corporate domains.")
+                        return False
+
+                # Set session status
+                st.session_state.authenticated = True
+                st.session_state.user_email = email
+                st.success("✅ Authentication successful! Loading model assets...")
+                st.rerun()
+
+    return False
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    if not check_auth():
+        return
+
     page = render_sidebar()
 
     try:
@@ -1097,6 +1687,7 @@ def main():
         "🗓️  Group Stage":      page_group_stage,
         "📊  Group Standings":   page_standings,
         "📈  Model Performance": page_model_performance,
+        "💰  Bankroll Manager":  page_bankroll_manager,
         "🏆  Tournament Winner": page_tournament_winner,
         "🤖  Match Previews":    page_match_previews,
         "💬  Chat Agent":        page_chat,
