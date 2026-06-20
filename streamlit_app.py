@@ -214,6 +214,40 @@ def load_bankroll_data(_client):
     """)
 
 
+def load_user_placed_bets(_client):
+    """Load user selected and placed wagers from BigQuery table."""
+    try:
+        return run_query(_client, f"""
+            SELECT match_number, selection, odds, stake, placed_at 
+            FROM {tbl('user_placed_bets')}
+        """)
+    except Exception:
+        # Return empty dataframe schema if table read fails or doesn't exist
+        return pd.DataFrame(columns=["match_number", "selection", "odds", "stake", "placed_at"])
+
+
+def save_user_placed_bet(_client, match_number, selection, odds, stake):
+    """Insert a placed bet systematically into BigQuery."""
+    from datetime import datetime, timezone
+    now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    
+    # Clean selection name for database query representation
+    sql = f"""
+        INSERT INTO {tbl('user_placed_bets')} (match_number, selection, odds, stake, placed_at)
+        VALUES ({int(match_number)}, '{selection}', {float(odds)}, {float(stake)}, '{now_str}')
+    """
+    _client.query(sql).result()
+
+
+def delete_user_placed_bet(_client, match_number, selection):
+    """Remove a placed bet systematically from BigQuery."""
+    sql = f"""
+        DELETE FROM {tbl('user_placed_bets')}
+        WHERE match_number = {int(match_number)} AND selection = '{selection}'
+    """
+    _client.query(sql).result()
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def render_sidebar():
@@ -636,67 +670,147 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
         st.subheader("Current High-Edge Trades")
         st.caption("Matches that are pending where our model probability exceeds the bookmaker implied probability by at least your Alpha Edge Target.")
 
+        # Toggle to show all upcoming matches to customize wagers
+        show_all_matches = st.toggle("🔍 Show all upcoming matches (including those below the Alpha target)", value=False)
+
         pending_df = out_df[out_df["is_completed"] == False].copy()
         
         if len(pending_df) == 0:
             st.info("No upcoming matches found or all remaining matches are already completed!")
         else:
-            # Filter to active alpha opportunities
-            alpha_pending = pending_df[pending_df["edge"] >= alpha_target].copy()
+            # Filter matches based on the toggle state
+            if show_all_matches:
+                alpha_pending = pending_df.copy()
+            else:
+                alpha_pending = pending_df[pending_df["edge"] >= alpha_target].copy()
             
             # Sort by highest expected value
             alpha_pending = alpha_pending.sort_values("expected_value", ascending=False)
             
             if len(alpha_pending) == 0:
-                st.caption(f"No upcoming outcomes of impending matches meet your raw {alpha_target:.1%} Alpha Target edge.")
-                st.info("💡 Try lowering the 'Alpha Edge Target' slider in the sidebar to discover borderline value plays.")
+                if not show_all_matches:
+                    st.caption(f"No upcoming matches meet your raw {alpha_target:.1%} Alpha Target edge.")
+                    st.info("💡 Try lowering the 'Alpha Edge Target' slider in the sidebar, or toggle 'Show all upcoming matches' above to view more.")
+                else:
+                    st.info("No upcoming matches in the schedule.")
             else:
                 col1, col2 = st.columns([2, 5])
                 with col1:
-                    st.metric("Detected Value Bets", len(alpha_pending))
-                    st.caption("Matches with identified positive mathematical expected value.")
+                    st.metric("Available Choices", len(alpha_pending))
+                    st.caption("Matches available to choose from in the active list.")
                 
-                # Format a table for users
-                display_trades = []
+                # Active Trades Selector Interactive Interface
+                st.markdown("### 📝 Trade Slip Selector")
+                st.caption("Set custom stakes and click **Book 🚀** on any prediction below to add them to your active tracker.")
+                
+                user_placed_df = load_user_placed_bets(client)
+                placed = set()
+                if len(user_placed_df) > 0:
+                    for _, r in user_placed_df.iterrows():
+                        placed.add((int(r["match_number"]), str(r["selection"])))
+
+                # Form to handle direct interactive table modifications
+                cols = st.columns([1, 2, 1, 1, 1, 1, 1])
+                cols[0].markdown("**Match**")
+                cols[1].markdown("**Fixture**")
+                cols[2].markdown("**Selection**")
+                cols[3].markdown("**Best Odds**")
+                cols[4].markdown("**Advised Stake**")
+                cols[5].markdown("**Status**")
+                cols[6].markdown("**Action**")
+
+                idx = 0
                 for _, row in alpha_pending.iterrows():
-                    m_num = row["match_number"]
+                    m_num = int(row["match_number"])
                     teams = f"{row['home_team']} vs {row['away_team']}"
-                    selection = row["outcome_type"]
-                    odds_val = row["best_odds"]
-                    p_model = row["model_prob"]
-                    p_mkt = row["market_prob"]
-                    edge_val = row["edge"]
-                    ev_val = row["expected_value"]
+                    selection = str(row["outcome_type"])
+                    odds_val = float(row["best_odds"])
                     
-                    # Kelly sizing based on current starting bankroll
+                    # Size recommendations
                     k_size_pct = row["kelly_pct"]
-                    recommended_kelly_stake = start_bankroll * k_size_pct * kelly_fraction
-                    risk_cap_amount = start_bankroll * max_stake_pct
-                    stake_final_kelly = min(recommended_kelly_stake, risk_cap_amount)
+                    recommended_stake = min(start_bankroll * k_size_pct * kelly_fraction, start_bankroll * max_stake_pct)
+                    recommended_stake = max(1.00, round(recommended_stake, 2)) # Ensure reasonable floor
                     
-                    # Tag categories
-                    if p_model >= 0.55:
-                        tag = "🟢 High Confidence Value"
-                    elif edge_val >= 0.08:
-                        tag = "🟡 Model Disagreement"
+                    is_booked = (m_num, selection) in placed
+                    
+                    # Columns render
+                    c0, c1, c2, c3, c4, c5, c6 = st.columns([1, 2, 1, 1, 1, 1, 1])
+                    c0.write(f"Match #{m_num}")
+                    c1.write(teams)
+                    c2.write(selection)
+                    c3.write(f"**{odds_val:.2f}**")
+                    
+                    # Stake modification input
+                    stake_custom = c4.number_input("Stake (£)", min_value=0.50, max_value=start_bankroll, value=recommended_stake, step=0.50, key=f"stake_{m_num}_{idx}")
+                    
+                    if is_booked:
+                        c5.write("🟢 **Active Trade**")
+                        if c6.button("Delete ❌", key=f"del_{m_num}_{idx}", use_container_width=True):
+                            delete_user_placed_bet(client, m_num, selection)
+                            st.toast(f"Removed bet for Match #{m_num}!")
+                            st.rerun()
                     else:
-                        tag = "⚪ Conservative Arbitrage"
-                        
-                    display_trades.append({
-                        "Match #": m_num,
-                        "Fixture": teams,
-                        "Selection": selection,
-                        "Market Odds": f"{odds_val:.2f}",
-                        "Model Prob": f"{p_model:.1%}",
-                        "Implied Prob": f"{p_mkt:.1%}",
-                        "Alpha Edge": f"{edge_val:+.1%}",
-                        "Expected EV": f"{ev_val:+.1%}",
-                        "Flat Stake (£2.00)": f"£{2.00:.2f}",
-                        "Kelly Stake": f"£{stake_final_kelly:.2f}",
-                        "Risk Tag": tag
-                    })
+                        c5.write("⚪ Unbooked")
+                        if c6.button("Book 🚀", key=f"book_{m_num}_{idx}", use_container_width=True):
+                            save_user_placed_bet(client, m_num, selection, odds_val, stake_custom)
+                            st.toast(f"✅ Placed £{stake_custom:.2f} wager on {teams} ({selection})!")
+                            st.rerun()
+                    idx += 1
                 
-                st.dataframe(pd.DataFrame(display_trades), use_container_width=True, hide_index=True)
+                st.divider()
+                st.subheader("💼 My Booked Trades Ledger")
+                st.caption("These are the wagers you have personally authorized and written to BigQuery. They are tracked dynamically against live results.")
+                
+                # Fetch fresh ledger values
+                fresh_user_df = load_user_placed_bets(client)
+                if len(fresh_user_df) == 0:
+                    st.info("No wagers currently booked in your tracker. Use the selector above to find opportunities and click 'Book 🚀'!")
+                else:
+                    booked_list = []
+                    for _, r in fresh_user_df.iterrows():
+                        m_num = int(r["match_number"])
+                        sel = r["selection"]
+                        odds_val = float(r["odds"])
+                        stake_val = float(r["stake"])
+                        placed_at = r["placed_at"]
+                        
+                        match_info = out_df[out_df["match_number"] == m_num]
+                        if len(match_info) > 0:
+                            first_row = match_info.iloc[0]
+                            teams = f"{first_row['home_team']} vs {first_row['away_team']}"
+                            is_comp = bool(first_row["is_completed"])
+                            act_res = first_row["actual_result"]
+                            
+                            sel_lbl = "home_win" if "home" in sel.lower() else "away_win" if "away" in sel.lower() else "draw"
+                            if is_comp:
+                                win_text = "Win ✅" if sel_lbl == act_res else "Loss ❌"
+                                payoff = stake_val * (odds_val - 1.0) if sel_lbl == act_res else -stake_val
+                            else:
+                                win_text = "⏱️ Pending"
+                                payoff = 0.0
+                        else:
+                            teams = f"Match {m_num}"
+                            is_comp = False
+                            win_text = "⏱️ Pending"
+                            payoff = 0.0
+                            
+                        booked_list.append({
+                            "Match #": m_num,
+                            "Fixture": teams,
+                            "Selection": sel,
+                            "Booked Odds": odds_val,
+                            "Stake Mode": f"£{stake_val:.2f}",
+                            "Potential Payout": f"£{stake_val * odds_val:.2f}",
+                            "Status": win_text,
+                            "Net P/L": f"£{payoff:+.2f}" if is_comp else "£0.00",
+                            "Placed At": str(placed_at)[:19] # Trim microseconds/timezone for clean display
+                        })
+                    
+                    booked_tbl_df = pd.DataFrame(booked_list).sort_values("Match #")
+                    st.dataframe(booked_tbl_df, use_container_width=True, hide_index=True)
+                    st.caption("💡 To delete or modify any bet above, simply use the 'Delete ❌' button on that specific match row in the Trade Slip Selector.")
+                
+                st.divider()
                 st.success("✅ **Quantitative Arbitrage Advisory**: Prioritize **Singles** on matches tagged with **High Confidence Value** or **Model Disagreement**. Avoid compounding multiple selections into parlays, as that multiplies the bookmaker margin.")
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -815,7 +929,7 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                 })
 
             # Show Comparison KPI stats
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col3_or = st.columns(4)
             
             with col1:
                 st.subheader("💵 Baseline Sizing (Cash)")
@@ -836,10 +950,63 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                 st.metric("Final Bankroll", f"£{curr_bank_kelly:.2f}", f"£{kelly_profit_val:+.2f} ({kelly_roi_pct:+.1f}% ROI)")
                 st.caption(f"Placed {kelly_bets_count} bets / Win Rate: {kelly_wins/kelly_bets_count if kelly_bets_count>0 else 0:.1%}")
 
+            # Calculate user placed wagers strategy progression curve
+            user_placed_df = load_user_placed_bets(client)
+            user_history = [start_bankroll]
+            curr_bank_user = start_bankroll
+            user_bets_count = 0
+            user_wins = 0
+            total_user_staked = 0
+            user_profit_val = 0.0
+
+            # Match actual outcomes with user wagers by match number
+            completed_matches_by_num = {int(r["match_number"]): r for _, r in best_comp_by_match.iterrows()}
+            
+            if len(user_placed_df) > 0:
+                user_placed_sorted = user_placed_df.sort_values('match_number')
+                for _, u_bet in user_placed_sorted.iterrows():
+                    m_num = int(u_bet["match_number"])
+                    sel_text = u_bet["selection"]
+                    sel_lbl = "home_win" if "home" in sel_text.lower() else "away_win" if "away" in sel_text.lower() else "draw"
+                    odds_val = float(u_bet["odds"])
+                    stake_val = float(u_bet["stake"])
+                    
+                    if m_num in completed_matches_by_num:
+                        act_match_row = completed_matches_by_num[m_num]
+                        u_act_result = act_match_row["actual_result"]
+                        is_win = (sel_lbl == u_act_result)
+                        
+                        user_bets_count += 1
+                        total_user_staked += stake_val
+                        if is_win:
+                            curr_bank_user += stake_val * (odds_val - 1.0)
+                            user_wins += 1
+                        else:
+                            curr_bank_user -= stake_val
+                        user_history.append(curr_bank_user)
+                    else:
+                        # Uncompleted wager, history stays flat
+                        user_history.append(curr_bank_user)
+                user_profit_val = curr_bank_user - start_bankroll
+            else:
+                user_history = [start_bankroll] * len(match_labels)
+
+            with col3_or:
+                user_roi_pct = (user_profit_val / total_user_staked * 100) if total_user_staked > 0 else 0
+                st.subheader("🎯 My Placed Bets")
+                st.metric("Final Bankroll", f"£{curr_bank_user:.2f}", f"£{user_profit_val:+.2f} ({user_roi_pct:+.1f}% ROI)")
+                st.caption(f"Placed {user_bets_count} bets / Win Rate: {user_wins/user_bets_count if user_bets_count>0 else 0:.1%}")
+
             # Plot custom growth trajectory chart
             st.write("")
             st.subheader("📈 Bankroll Compound History")
             
+            # Align user history length with match_labels for visualization safety
+            if len(user_history) < len(match_labels):
+                user_history += [user_history[-1]] * (len(match_labels) - len(user_history))
+            elif len(user_history) > len(match_labels):
+                user_history = user_history[:len(match_labels)]
+
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=match_labels,
@@ -855,6 +1022,14 @@ To survive a high-variance "cold run", we implement an automated stop-loss:
                 mode="lines+markers",
                 name=f"Fractional {kelly_fraction} Kelly",
                 line=dict(color="#2ecc71", width=3),
+                marker=dict(size=4)
+            ))
+            fig.add_trace(go.Scatter(
+                x=match_labels,
+                y=user_history,
+                mode="lines+markers",
+                name="My Placed Bets Track",
+                line=dict(color="#e74c3c", width=3, dash="dot"),
                 marker=dict(size=4)
             ))
             fig.add_trace(go.Scatter(
