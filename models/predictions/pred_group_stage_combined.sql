@@ -30,6 +30,9 @@ odds as (
         implied_p_home  as odds_p_home_win,
         implied_p_draw  as odds_p_draw,
         implied_p_away  as odds_p_away_win,
+        best_odds_home,
+        best_odds_draw,
+        best_odds_away,
         bookmaker_count,
         fetched_at      as odds_fetched_at
     from {{ ref('stg_odds__bookmaker_consensus') }}
@@ -62,6 +65,9 @@ blended as (
         o.odds_p_home_win,
         o.odds_p_draw,
         o.odds_p_away_win,
+        o.best_odds_home,
+        o.best_odds_draw,
+        o.best_odds_away,
         o.bookmaker_count,
         o.odds_fetched_at,
 
@@ -113,15 +119,12 @@ blended as (
     left join odds   o on p.home_team = o.home_team and p.away_team = o.away_team
 ),
 
--- Apply draw confidence boost (70% increase) to correct severe under-prediction of draws in group stage
--- Rationale: Group matches show ~37% draw rate, models under-estimate at ~25%
--- Analysis: Matches 3, 7, 8 all had draws but model predicted other outcomes
--- Even with 15% boost, draw was still 2nd/3rd highest probability
--- 70% boost (~1.7x) aims to prioritize draws for borderline matches
+-- Keep draw probability balanced with standard historical weighted variables.
+-- Over-compensating for short-term variance runs caused substantial predictive drift on win/loss outcome nodes.
 draw_boosted as (
     select
         *,
-        ensemble_p_draw * 1.70 as ensemble_p_draw_boosted  -- 70% boost to draw probability
+        ensemble_p_draw * 1.00 as ensemble_p_draw_boosted  -- removed the 70% boost (reverted back to 1.00)
     from blended
 ),
 
@@ -151,6 +154,9 @@ normalised as (
         odds_p_home_win,
         odds_p_draw,
         odds_p_away_win,
+        best_odds_home,
+        best_odds_draw,
+        best_odds_away,
         bookmaker_count,
         odds_fetched_at,
         ensemble_p_home_win,
@@ -190,6 +196,9 @@ select
     odds_p_home_win,
     odds_p_draw,
     odds_p_away_win,
+    best_odds_home,
+    best_odds_draw,
+    best_odds_away,
     bookmaker_count,
     odds_fetched_at,
 
