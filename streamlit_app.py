@@ -1869,75 +1869,8 @@ def page_chat(client):
 # ── Authentication ────────────────────────────────────────────────────────────
 
 def check_auth():
-    """Renders a secure, stylized login screen.
-    Returns True if authenticated, False otherwise.
-    Allows easy locking by password & restrictive email domains if configured.
-    """
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-        st.session_state.user_email = ""
-
-    if st.session_state.authenticated:
-        # Show logged-in email and a Sign Out button at the bottom of the sidebar
-        st.sidebar.caption(f"Authenticated as: {st.session_state.user_email}")
-        if st.sidebar.button("🔓 Sign Out", use_container_width=True):
-            st.session_state.authenticated = False
-            st.session_state.user_email = ""
-            st.rerun()
-        return True
-
-    # Render landing login card
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.write("")
-        st.write("")
-        st.markdown("<h1 style='text-align: center; font-size: 3rem; margin: 0;'>⚽</h1>", unsafe_allow_html=True)
-        st.markdown("<h2 style='text-align: center; margin: 0;'>World Cup 2026 Predictions</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #7f8c8d; margin-bottom: 2rem;'>Quantitative Model Predictions & Expected Value Dashboard</p>", unsafe_allow_html=True)
-        st.divider()
-
-        with st.form("login_form"):
-            st.markdown("### Access Authentication")
-            email = st.text_input("Email Address", placeholder="name@domain.com").strip().lower()
-            password = st.text_input("Password", type="password", placeholder="••••••••")
-            
-            submit = st.form_submit_button("Enter Predictions Portal", use_container_width=True)
-            
-            if submit:
-                # Base email check
-                if not email or "@" not in email:
-                    st.error("⚠️ Please enter a valid email address.")
-                    return False
-                
-                # Retrieve from secrets if provided, else define standard default passcode
-                auth_secrets = st.secrets.get("auth", {})
-                correct_password = auth_secrets.get("password", "worldcup2026")
-                allowed_domains = auth_secrets.get("allowed_domains", [])
-                allowed_users = auth_secrets.get("allowed_users", [])
-                
-                # Check for password accuracy
-                if password != correct_password:
-                    st.error("⚠️ Invalid credential passcode.")
-                    return False
-
-                # Email restriction checks
-                if allowed_users and email not in [u.lower() for u in allowed_users]:
-                    st.error("⚠️ This email address is not authorized.")
-                    return False
-                
-                if allowed_domains:
-                    domain = email.split("@")[-1]
-                    if domain not in [d.lower() for d in allowed_domains]:
-                        st.error("⚠️ Access is restricted to authorized corporate domains.")
-                        return False
-
-                # Set session status
-                st.session_state.authenticated = True
-                st.session_state.user_email = email
-                st.success("✅ Authentication successful! Loading model assets...")
-                st.rerun()
-
-    return False
+    """Bypassed login screen for easy testing."""
+    return True
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
